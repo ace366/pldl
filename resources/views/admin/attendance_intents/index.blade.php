@@ -4,6 +4,12 @@
             <div class="bg-white shadow-sm sm:rounded-xl p-6">
                 @php
                     $canEdit = \App\Services\RolePermissionService::canUser(auth()->user(), 'attendance_intents', 'update');
+                    $canMarkAbsentRole = in_array((string)(auth()->user()->role ?? ''), ['admin', 'staff'], true);
+                    try {
+                        $isTodayView = \Illuminate\Support\Carbon::parse($date)->isToday();
+                    } catch (\Exception $e) {
+                        $isTodayView = false;
+                    }
                 @endphp
 
                 <h1 class="text-lg font-semibold mb-4">
@@ -78,13 +84,20 @@
                                         }
 
                                         // 表示用ラベル
-                                        $statusLabel = $arrived ? '出席済' : '未到着';
+                                        $isAbsent = $intent->manual_status === 'not_arrived';
+                                        $statusLabel = $arrived ? '出席済' : ($isAbsent ? '欠席' : '未到着');
 
                                         // どのモードで表示されているか（ボタンの強調用）
                                         $mode = $intent->manual_status ?? 'auto'; // arrived / not_arrived / auto(null)
                                     @endphp
                                     @php
                                         $pickupConfirmed = (bool)$intent->pickup_confirmed;
+                                        $canMarkAbsent = $canEdit
+                                            && $canMarkAbsentRole
+                                            && $isTodayView
+                                            && !$arrived
+                                            && !$isAbsent
+                                            && !$pickupConfirmed;
 
                                         $rowClass = '';
                                         if (!$arrived) {
@@ -109,7 +122,11 @@
                                                 <span>{{ $statusLabel }}</span>
 
                                                 {{-- いま手動ならバッジ --}}
-                                                @if($intent->manual_status)
+                                                @if($isAbsent)
+                                                    <span class="text-[11px] px-2 py-0.5 rounded-full bg-red-100 border border-red-300 text-red-800 font-semibold">
+                                                        管理欠席
+                                                    </span>
+                                                @elseif($intent->manual_status)
                                                     <span class="text-[11px] px-2 py-0.5 rounded-full bg-yellow-100 border border-yellow-300 text-yellow-800 font-semibold">
                                                         手動
                                                     </span>
@@ -202,17 +219,32 @@
                                                         </button>
                                                     </form>
 
-                                                    {{-- 未到着にする --}}
-                                                    <form method="POST" action="{{ route('admin.attendance_intents.toggle') }}">
-                                                        @csrf
-                                                        <input type="hidden" name="intent_id" value="{{ $intent->id }}">
-                                                        <input type="hidden" name="manual_status" value="not_arrived">
-                                                        <button type="submit"
-                                                            class="px-3 py-1.5 rounded border
-                                                                {{ $mode === 'not_arrived' ? 'bg-red-100 border-red-300 text-red-900' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' }}">
-                                                            未到着
-                                                        </button>
-                                                    </form>
+                                                    @if($isTodayView)
+                                                        <form method="POST"
+                                                              action="{{ route('admin.attendance_intents.mark_absent') }}"
+                                                              onsubmit="return confirm('この児童を欠席に変更しますか？');">
+                                                            @csrf
+                                                            <input type="hidden" name="intent_id" value="{{ $intent->id }}">
+                                                            <button type="submit"
+                                                                class="px-3 py-1.5 rounded border
+                                                                    {{ $isAbsent ? 'bg-red-100 border-red-300 text-red-900' : 'bg-white border-red-300 text-red-700 hover:bg-red-50' }}"
+                                                                @disabled(!$canMarkAbsent && !$isAbsent)>
+                                                                {{ $isAbsent ? '欠席済' : '欠席にする' }}
+                                                            </button>
+                                                        </form>
+                                                    @else
+                                                        {{-- 未到着にする --}}
+                                                        <form method="POST" action="{{ route('admin.attendance_intents.toggle') }}">
+                                                            @csrf
+                                                            <input type="hidden" name="intent_id" value="{{ $intent->id }}">
+                                                            <input type="hidden" name="manual_status" value="not_arrived">
+                                                            <button type="submit"
+                                                                class="px-3 py-1.5 rounded border
+                                                                    {{ $mode === 'not_arrived' ? 'bg-red-100 border-red-300 text-red-900' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' }}">
+                                                                未到着
+                                                            </button>
+                                                        </form>
+                                                    @endif
 
                                                     {{-- 自動に戻す --}}
                                                     <form method="POST" action="{{ route('admin.attendance_intents.toggle') }}">
@@ -254,7 +286,7 @@
 
                                 @if(($data['children'] ?? collect())->isEmpty())
                                     <tr>
-                                        <td colspan="3" class="border px-2 py-6 text-center text-gray-500">
+                                        <td colspan="4" class="border px-2 py-6 text-center text-gray-500">
                                             この学校の参加予定はありません
                                         </td>
                                     </tr>

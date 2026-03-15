@@ -18,6 +18,12 @@ function cls(...xs) {
   return xs.filter(Boolean).join(" ");
 }
 
+function todayJst() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+  }).format(new Date());
+}
+
 export default function AdminAttendanceIntents(props) {
   const {
     date: initialDate,
@@ -33,6 +39,7 @@ export default function AdminAttendanceIntents(props) {
   const canEdit = canEditProp !== false && canEditProp !== "0";
 
   const [date, setDate] = useState(initialDate || "");
+  const isTodayView = date === todayJst();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
@@ -177,6 +184,9 @@ export default function AdminAttendanceIntents(props) {
 
   const onSetManual = async (intentId, status) => {
     if (!canEdit || !apiToggleManual) return;
+    if (status === "not_arrived" && isTodayView && !window.confirm("この児童を欠席に変更しますか？")) {
+      return;
+    }
     try {
       await postJson(apiToggleManual, { intent_id: intentId, manual_status: status });
       // arrived 表示は summary 再計算が必要なので素直に再取得（確実性重視）
@@ -294,13 +304,14 @@ export default function AdminAttendanceIntents(props) {
                     s.children.map((c) => {
                       const arrived = !!c.arrived;
                       const pickupConfirmed = !!c.pickup_confirmed;
+                      const isAbsent = isTodayView && String(c.manual_status || "") === "not_arrived";
 
                       return (
                         <div
                           key={c.intent_id}
                           className={cls(
                             "rounded-2xl border p-3",
-                            !arrived ? "bg-red-50 border-red-200" : "bg-white border-gray-200"
+                            isAbsent || !arrived ? "bg-red-50 border-red-200" : "bg-white border-gray-200"
                           )}
                         >
                           {/* 名前：1行固定（縦伸び防止） */}
@@ -316,11 +327,13 @@ export default function AdminAttendanceIntents(props) {
                               <div className="mt-1 flex items-center gap-2">
                                 <span className={cls(
                                   "text-[11px] px-2 py-0.5 rounded-full border font-semibold",
-                                  arrived
+                                  isAbsent
+                                    ? "bg-red-100 border-red-300 text-red-800"
+                                    : arrived
                                     ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                                     : "bg-red-100 border-red-200 text-red-800"
                                 )}>
-                                  {arrived ? "出席済" : "未到着"}
+                                  {isAbsent ? "欠席" : (arrived ? "出席済" : "未到着")}
                                 </span>
 
                                 {c.manual_status ? (
@@ -353,13 +366,15 @@ export default function AdminAttendanceIntents(props) {
                             <button
                               type="button"
                               onClick={() => onTogglePickup(c.intent_id)}
-                              disabled={!canEdit}
+                              disabled={!canEdit || isAbsent}
                               className={cls(
                                 "rounded-2xl border px-3 py-3 flex items-center justify-center gap-2 transition active:scale-[0.99]",
-                                pickupConfirmed
+                                isAbsent
+                                  ? "bg-gray-100 border-gray-200 text-gray-400"
+                                  : pickupConfirmed
                                   ? "bg-indigo-600 border-indigo-700 text-white shadow"
                                   : "bg-orange-50 border-orange-300 text-orange-900 hover:bg-orange-100",
-                                !canEdit && "cursor-not-allowed opacity-70"
+                                (!canEdit || isAbsent) && "cursor-not-allowed opacity-70"
                               )}
                               aria-label="乗車確認"
                             >
@@ -401,7 +416,7 @@ export default function AdminAttendanceIntents(props) {
                                   !canEdit && "cursor-not-allowed opacity-70"
                                 )}
                               >
-                                未到着
+                                {isTodayView ? "欠席" : "未到着"}
                               </button>
                               <button
                                 type="button"

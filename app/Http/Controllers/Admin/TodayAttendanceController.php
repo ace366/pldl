@@ -31,7 +31,7 @@ class TodayAttendanceController extends Controller
             return 'attending';
         }
         if ($manualStatus === 'not_arrived') {
-            return $pickupConfirmed ? 'pickup' : 'registered';
+            return 'absent';
         }
         if ($hasIn) {
             return 'attending';
@@ -48,13 +48,12 @@ class TodayAttendanceController extends Controller
         \Illuminate\Support\Collection $outIds,
         \Illuminate\Support\Collection $intentsByChild
     ): \Illuminate\Support\Collection {
-        $manualArrivedIds = $intentsByChild
-            ->filter(fn ($intent) => (string)($intent?->manual_status ?? '') === 'arrived')
+        $intentIds = $intentsByChild
             ->keys();
 
         return $inIds
             ->merge($outIds)
-            ->merge($manualArrivedIds)
+            ->merge($intentIds)
             ->unique()
             ->map(fn ($id) => (int)$id)
             ->filter(fn ($id) => $id > 0)

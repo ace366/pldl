@@ -10,6 +10,25 @@ use Illuminate\Http\Request;
 
 class AttendanceIntentController extends Controller
 {
+    private function persistManualStatus(ChildAttendanceIntent $intent, ?string $manualStatus): void
+    {
+        $intent->manual_status = $manualStatus;
+        $intent->manual_updated_at = now();
+        $intent->save();
+    }
+
+    private function manualStatusErrorResponse(Request $request, string $message, int $status = 422)
+    {
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok' => false,
+                'message' => $message,
+            ], $status);
+        }
+
+        return back()->with('error', $message);
+    }
+
     public function index(Request $request)
     {
         $date = $request->input('date', now()->toDateString());
@@ -102,17 +121,60 @@ class AttendanceIntentController extends Controller
 
         $intent = ChildAttendanceIntent::findOrFail((int)$validated['intent_id']);
 
-        if ($validated['manual_status'] === 'auto') {
-            $intent->manual_status = null;
-        } else {
-            $intent->manual_status = $validated['manual_status'];
-        }
-
-        $intent->manual_updated_at = now();
-        $intent->save();
+        $this->persistManualStatus(
+            $intent,
+            $validated['manual_status'] === 'auto' ? null : $validated['manual_status']
+        );
 
         return back()->with('success', '状態を更新しました。');
     }
+
+    public function markAbsent(Request $request)
+    {
+        $validated = $request->validate([
+            'intent_id' => ['required', 'integer', 'exists:child_attendance_intents,id'],
+        ]);
+
+        $user = $request->user();
+        if (!in_array((string)($user?->role ?? ''), ['admin', 'staff'], true)) {
+            abort(403, 'This action is unauthorized.');
+        }
+
+        $intent = ChildAttendanceIntent::query()->findOrFail((int)$validated['intent_id']);
+        $intentDate = optional($intent->date)->toDateString();
+        if (!$intentDate) {
+            $intentDate = now()->toDateString();
+        }
+
+        if ($intentDate !== now()->toDateString()) {
+            return $this->manualStatusErrorResponse($request, '管理側で欠席にできるのは当日分のみです。');
+        }
+
+        $hasAttendance = Attendance::query()
+            ->where('child_id', (int)$intent->child_id)
+            ->whereDate('attended_at', $intentDate)
+            ->exists();
+
+        if ($hasAttendance) {
+            return $this->manualStatusErrorResponse($request, 'すでに出席記録があるため欠席に変更できません。');
+        }
+
+        $this->persistManualStatus($intent, 'not_arrived');
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'ok' => true,
+                'intent_id' => (int)$intent->id,
+                'manual_status' => $intent->manual_status,
+                'manual_updated_at' => $intent->manual_updated_at
+                    ? $intent->manual_updated_at->toISOString()
+                    : null,
+            ]);
+        }
+
+        return back()->with('success', '欠席にしました。');
+    }
+
     /**
      * ✅ 送迎：乗車確認（車アイコンでトグル）
      * - デフォルト未乗車（pickup_confirmed = 0）

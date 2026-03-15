@@ -24,6 +24,13 @@
 
         $canView = \App\Services\RolePermissionService::canUser(auth()->user(), 'children_index', 'view');
         $canUpdate = \App\Services\RolePermissionService::canUser(auth()->user(), 'children_index', 'update');
+        $canMarkAbsent = \App\Services\RolePermissionService::canUser(auth()->user(), 'attendance_intents', 'update')
+            && in_array((string)(auth()->user()->role ?? ''), ['admin', 'staff'], true);
+        try {
+            $isTodayView = \Carbon\Carbon::parse($today)->isToday();
+        } catch (\Exception $e) {
+            $isTodayView = false;
+        }
     @endphp
 
     <div class="py-6">
@@ -109,12 +116,30 @@
 
                                             $hasAllergy = (bool)($c->has_allergy ?? false);
                                             $allergyText = (string)($c->allergy_note ?? '');
+                                            $todayState = (string)($c->today_state ?? 'registered');
+                                            $canMarkRowAbsent = $canMarkAbsent
+                                                && $isTodayView
+                                                && !empty($c->today_intent_id)
+                                                && $todayState === 'registered';
                                         @endphp
                                         <tr class="hover:bg-gray-50" data-row="{{ $rowKey }}">
                                             <td class="py-3 px-3 border text-gray-700 font-mono">{{ $c->child_code }}</td>
                                             <td class="py-3 px-3 border text-gray-700">{{ $c->grade ?? '—' }}</td>
                                             <td class="py-3 px-3 border text-gray-900 font-semibold">
-                                                {{ $c->full_name ?? ($c->last_name.' '.$c->first_name) }}
+                                                <div>{{ $c->full_name ?? ($c->last_name.' '.$c->first_name) }}</div>
+                                                @if($canMarkRowAbsent)
+                                                    <form method="POST"
+                                                          action="{{ route('admin.attendance_intents.mark_absent') }}"
+                                                          class="mt-2"
+                                                          onsubmit="return confirm('この児童を欠席に変更しますか？');">
+                                                        @csrf
+                                                        <input type="hidden" name="intent_id" value="{{ $c->today_intent_id }}">
+                                                        <button type="submit"
+                                                                class="inline-flex items-center justify-center rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50">
+                                                            欠席にする
+                                                        </button>
+                                                    </form>
+                                                @endif
                                             </td>
                                             <td class="py-3 px-3 border text-gray-700">
                                                 {{ $c->last_name_kana ?? '' }} {{ $c->first_name_kana ?? '' }}
@@ -210,10 +235,11 @@
                                                 @endif
                                             </td>
                                             <td class="py-3 px-3 border">
-                                                @php
-                                                    $todayState = (string)($c->today_state ?? 'registered');
-                                                @endphp
-                                                @if($todayState === 'pickup')
+                                                @if($todayState === 'absent')
+                                                    <span class="inline-flex px-2 py-1 rounded-full bg-red-100 text-red-800 text-xs font-semibold js-attending-badge">
+                                                        欠席
+                                                    </span>
+                                                @elseif($todayState === 'pickup')
                                                     <span class="inline-flex px-2 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold js-attending-badge">
                                                         送迎中
                                                     </span>
@@ -285,9 +311,9 @@
                                                         <input type="hidden" name="date" value="{{ $today }}">
                                                         <button type="submit"
                                                                 class="inline-flex items-center justify-center px-3 py-1 rounded text-xs font-semibold
-                                                                       {{ ($c->today_state ?? '') === 'checked_out' ? 'bg-gray-200 text-gray-600' : 'bg-rose-600 hover:bg-rose-700 text-white' }}"
-                                                                {{ ($c->today_state ?? '') === 'checked_out' ? 'disabled' : '' }}>
-                                                            {{ ($c->today_state ?? '') === 'checked_out' ? '帰宅済' : '帰宅' }}
+                                                                       {{ in_array(($c->today_state ?? ''), ['checked_out', 'absent'], true) ? 'bg-gray-200 text-gray-600' : 'bg-rose-600 hover:bg-rose-700 text-white' }}"
+                                                                {{ in_array(($c->today_state ?? ''), ['checked_out', 'absent'], true) ? 'disabled' : '' }}>
+                                                            {{ ($c->today_state ?? '') === 'checked_out' ? '帰宅済' : (($c->today_state ?? '') === 'absent' ? '欠席' : '帰宅') }}
                                                         </button>
                                                     </form>
                                                 @else
