@@ -26,6 +26,7 @@ class ChatThreadController extends Controller
         $q = trim((string) $request->query('q', ''));
         $unreadOnly = $request->boolean('unread_only');
         $status = (string) $request->query('status', '');
+        $lineIntegrationEnabled = (bool) config('features.line_integration_enabled', false);
         if (!in_array($status, ['open', 'closed'], true)) {
             $status = '';
         }
@@ -34,7 +35,7 @@ class ChatThreadController extends Controller
         $guardianHasLastName = $this->hasColumn('guardians', 'last_name');
         $guardianHasFirstName = $this->hasColumn('guardians', 'first_name');
         $guardianHasName = $this->hasColumn('guardians', 'name');
-        $guardianHasLineUserId = $this->hasColumn('guardians', 'line_user_id');
+        $guardianHasLineUserId = $lineIntegrationEnabled && $this->hasColumn('guardians', 'line_user_id');
         $childrenHasLastName = $this->hasColumn('children', 'last_name');
         $childrenHasFirstName = $this->hasColumn('children', 'first_name');
         $canSearchGuardian = $guardianHasLastName || $guardianHasFirstName || $guardianHasName || $guardianHasLineUserId;
@@ -144,6 +145,7 @@ class ChatThreadController extends Controller
                 'unread_only' => $unreadOnly,
                 'status' => $status,
             ],
+            'lineIntegrationEnabled' => $lineIntegrationEnabled,
         ]);
     }
 
@@ -176,6 +178,7 @@ class ChatThreadController extends Controller
         return view('admin.chats.show', [
             'thread' => $thread,
             'messages' => $messages,
+            'lineIntegrationEnabled' => (bool) config('features.line_integration_enabled', false),
         ]);
     }
 
@@ -211,23 +214,26 @@ class ChatThreadController extends Controller
 
         $deliveryStatus = 'sent';
         $systemBody = null;
+        $lineIntegrationEnabled = (bool) config('features.line_integration_enabled', false);
 
-        $thread->loadMissing('guardian');
-        $lineUserId = trim((string) ($thread->guardian->line_user_id ?? ''));
-        if ($lineUserId === '') {
-            $deliveryStatus = 'failed';
-            $systemBody = '配信失敗: この保護者はLINE未連携です。';
-        } else {
-            try {
-                $lineApi->pushText($lineUserId, (string) $validated['body']);
-            } catch (\Throwable $e) {
+        if ($lineIntegrationEnabled) {
+            $thread->loadMissing('guardian');
+            $lineUserId = trim((string) ($thread->guardian->line_user_id ?? ''));
+            if ($lineUserId === '') {
                 $deliveryStatus = 'failed';
-                $systemBody = '配信失敗: LINE push送信エラー（'.$e->getMessage().'）';
-                Log::warning('Staff chat push failed', [
-                    'thread_id' => (int) $thread->id,
-                    'chat_message_id' => (int) $message->id,
-                    'error' => $e->getMessage(),
-                ]);
+                $systemBody = '配信失敗: この保護者はLINE未連携です。';
+            } else {
+                try {
+                    $lineApi->pushText($lineUserId, (string) $validated['body']);
+                } catch (\Throwable $e) {
+                    $deliveryStatus = 'failed';
+                    $systemBody = '配信失敗: LINE push送信エラー（'.$e->getMessage().'）';
+                    Log::warning('Staff chat push failed', [
+                        'thread_id' => (int) $thread->id,
+                        'chat_message_id' => (int) $message->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 

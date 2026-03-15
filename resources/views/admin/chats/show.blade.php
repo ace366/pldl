@@ -26,13 +26,7 @@
                         @if($childrenSummary !== '')
                             <p class="mt-1 text-sm text-gray-600">児童: {{ $childrenSummary }}</p>
                         @endif
-                        <p class="mt-1 text-sm text-gray-600">
-                            @if(!empty($thread->guardian?->line_user_id))
-                                LINE連携済み
-                            @else
-                                LINE未連携（返信はDB保存のみ）
-                            @endif
-                        </p>
+                        <p class="mt-1 text-sm text-gray-600">保護者とのメッセージ履歴を確認できます。</p>
                     </div>
                     <div class="text-right">
                         <div class="text-xs text-gray-500">
@@ -56,7 +50,7 @@
                     </div>
                 @endif
 
-                @if (session('line_link_error'))
+                @if ($lineIntegrationEnabled && session('line_link_error'))
                     <div class="mt-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">
                         {{ session('line_link_error') }}
                     </div>

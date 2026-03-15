@@ -153,6 +153,7 @@ class FamilyAuthController extends Controller
         })->values();
 
         $userAgent = (string)($request->header('User-Agent') ?? '');
+        $lineIntegrationEnabled = (bool) config('features.line_integration_enabled', false);
         $familyHomeProps = [
             'child' => [
                 'name' => $child->full_name,
@@ -174,13 +175,13 @@ class FamilyAuthController extends Controller
             'readStatusUrl' => route('family.messages.read_status', ['child_id' => (int)$child->id]),
             'fetchMessagesUrl' => route('family.messages.latest', ['child_id' => (int)$child->id]),
             'siblings' => $siblingsPayload,
-            'line' => [
+            'line' => $lineIntegrationEnabled ? [
                 'isLinked' => !empty($currentGuardian?->line_user_id),
                 'connectUrl' => $currentGuardian
                     ? route('family.line.link', ['guardian_id' => (int)$currentGuardian->id])
                     : null,
                 'settingsUrl' => route('family.profile.edit', $currentGuardian ? ['guardian_id' => (int)$currentGuardian->id] : []),
-            ],
+            ] : null,
         ];
 
         return view('family.home', [

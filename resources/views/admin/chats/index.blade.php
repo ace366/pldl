@@ -5,7 +5,7 @@
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <h1 class="text-lg sm:text-xl font-bold text-gray-900">保護者チャット</h1>
-                        <p class="mt-1 text-sm text-gray-600">LINEと同期されたメッセージ一覧です。</p>
+                        <p class="mt-1 text-sm text-gray-600">保護者とのメッセージ一覧です。</p>
                     </div>
                 </div>
 
@@ -23,7 +23,7 @@
                                    type="text"
                                    name="q"
                                    value="{{ $q }}"
-                                   placeholder="保護者名 / 児童名 / LINE ID"
+                                   placeholder="保護者名 / 児童名"
                                    class="mt-1 block w-full rounded-xl border-gray-300 text-sm focus:border-sky-500 focus:ring-sky-500">
                         </div>
                         <div>
@@ -96,7 +96,7 @@
                         </a>
                     @empty
                         <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-600">
-                            まだチャットはありません。保護者からLINEメッセージを受信すると表示されます。
+                            まだチャットはありません。保護者からメッセージが届くと表示されます。
                         </div>
                     @endforelse
                 </div>
