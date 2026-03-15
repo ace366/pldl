@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
 use App\Models\ChatThread;
+use App\Models\Child;
 use App\Models\FamilyMessage;
 use App\Services\Line\LineApiService;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +27,7 @@ class ChatThreadController extends Controller
         $q = trim((string) $request->query('q', ''));
         $unreadOnly = $request->boolean('unread_only');
         $status = (string) $request->query('status', '');
+        $lineIntegrationEnabled = (bool) config('features.line_integration_enabled', false);
         if (!in_array($status, ['open', 'closed'], true)) {
             $status = '';
         }
@@ -34,11 +36,12 @@ class ChatThreadController extends Controller
         $guardianHasLastName = $this->hasColumn('guardians', 'last_name');
         $guardianHasFirstName = $this->hasColumn('guardians', 'first_name');
         $guardianHasName = $this->hasColumn('guardians', 'name');
-        $guardianHasLineUserId = $this->hasColumn('guardians', 'line_user_id');
+        $guardianHasLineUserId = $lineIntegrationEnabled && $this->hasColumn('guardians', 'line_user_id');
         $childrenHasLastName = $this->hasColumn('children', 'last_name');
         $childrenHasFirstName = $this->hasColumn('children', 'first_name');
+        $childrenHasCode = $this->hasColumn('children', 'child_code');
         $canSearchGuardian = $guardianHasLastName || $guardianHasFirstName || $guardianHasName || $guardianHasLineUserId;
-        $canSearchChildren = $childrenHasLastName || $childrenHasFirstName;
+        $canSearchChildren = $childrenHasLastName || $childrenHasFirstName || $childrenHasCode;
 
         $query = ChatThread::query()->with([
             'guardian',
@@ -55,7 +58,8 @@ class ChatThreadController extends Controller
                     $guardianHasName,
                     $guardianHasLineUserId,
                     $childrenHasLastName,
-                    $childrenHasFirstName
+                    $childrenHasFirstName,
+                    $childrenHasCode
                 ) {
                     $builder->whereHas('guardian', function ($gq) use (
                         $q,
@@ -64,7 +68,8 @@ class ChatThreadController extends Controller
                         $guardianHasName,
                         $guardianHasLineUserId,
                         $childrenHasLastName,
-                        $childrenHasFirstName
+                        $childrenHasFirstName,
+                        $childrenHasCode
                     ) {
                         $gq->where(function ($sq) use (
                             $q,
@@ -73,7 +78,8 @@ class ChatThreadController extends Controller
                             $guardianHasName,
                             $guardianHasLineUserId,
                             $childrenHasLastName,
-                            $childrenHasFirstName
+                            $childrenHasFirstName,
+                            $childrenHasCode
                         ) {
                             $like = "%{$q}%";
 
@@ -90,8 +96,8 @@ class ChatThreadController extends Controller
                                 $sq->orWhere('line_user_id', 'like', $like);
                             }
 
-                            if ($childrenHasLastName || $childrenHasFirstName) {
-                                $sq->orWhereHas('children', function ($cq) use ($like, $childrenHasLastName, $childrenHasFirstName) {
+                            if ($childrenHasLastName || $childrenHasFirstName || $childrenHasCode) {
+                                $sq->orWhereHas('children', function ($cq) use ($like, $childrenHasLastName, $childrenHasFirstName, $childrenHasCode) {
                                     if ($childrenHasLastName) {
                                         $cq->where('last_name', 'like', $like);
                                     }
@@ -107,6 +113,9 @@ class ChatThreadController extends Controller
                                             "CONCAT(COALESCE(last_name,''), ' ', COALESCE(first_name,'')) like ?",
                                             [$like]
                                         );
+                                    }
+                                    if ($childrenHasCode) {
+                                        $cq->orWhere('child_code', 'like', $like);
                                     }
                                 });
                             }
@@ -137,13 +146,17 @@ class ChatThreadController extends Controller
             ->paginate(30)
             ->withQueryString();
 
+        $unreadChildren = $this->resolveUnreadChildren($q);
+
         return view('admin.chats.index', [
             'threads' => $threads,
+            'unreadChildren' => $unreadChildren,
             'filters' => [
                 'q' => $q,
                 'unread_only' => $unreadOnly,
                 'status' => $status,
             ],
+            'lineIntegrationEnabled' => $lineIntegrationEnabled,
         ]);
     }
 
@@ -176,6 +189,7 @@ class ChatThreadController extends Controller
         return view('admin.chats.show', [
             'thread' => $thread,
             'messages' => $messages,
+            'lineIntegrationEnabled' => (bool) config('features.line_integration_enabled', false),
         ]);
     }
 
@@ -211,23 +225,26 @@ class ChatThreadController extends Controller
 
         $deliveryStatus = 'sent';
         $systemBody = null;
+        $lineIntegrationEnabled = (bool) config('features.line_integration_enabled', false);
 
-        $thread->loadMissing('guardian');
-        $lineUserId = trim((string) ($thread->guardian->line_user_id ?? ''));
-        if ($lineUserId === '') {
-            $deliveryStatus = 'failed';
-            $systemBody = '配信失敗: この保護者はLINE未連携です。';
-        } else {
-            try {
-                $lineApi->pushText($lineUserId, (string) $validated['body']);
-            } catch (\Throwable $e) {
+        if ($lineIntegrationEnabled) {
+            $thread->loadMissing('guardian');
+            $lineUserId = trim((string) ($thread->guardian->line_user_id ?? ''));
+            if ($lineUserId === '') {
                 $deliveryStatus = 'failed';
-                $systemBody = '配信失敗: LINE push送信エラー（'.$e->getMessage().'）';
-                Log::warning('Staff chat push failed', [
-                    'thread_id' => (int) $thread->id,
-                    'chat_message_id' => (int) $message->id,
-                    'error' => $e->getMessage(),
-                ]);
+                $systemBody = '配信失敗: この保護者はLINE未連携です。';
+            } else {
+                try {
+                    $lineApi->pushText($lineUserId, (string) $validated['body']);
+                } catch (\Throwable $e) {
+                    $deliveryStatus = 'failed';
+                    $systemBody = '配信失敗: LINE push送信エラー（'.$e->getMessage().'）';
+                    Log::warning('Staff chat push failed', [
+                        'thread_id' => (int) $thread->id,
+                        'chat_message_id' => (int) $message->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -325,6 +342,82 @@ class ChatThreadController extends Controller
         self::$schemaColumnCache[$cacheKey] = Schema::hasTable($table) && Schema::hasColumn($table, $column);
 
         return self::$schemaColumnCache[$cacheKey];
+    }
+
+    private function resolveUnreadChildren(string $q = '')
+    {
+        $adminReadKey = null;
+        if (Schema::hasTable('family_message_admin_reads')) {
+            if (Schema::hasColumn('family_message_admin_reads', 'family_message_id')) {
+                $adminReadKey = 'family_message_id';
+            } elseif (Schema::hasColumn('family_message_admin_reads', 'message_id')) {
+                $adminReadKey = 'message_id';
+            }
+        }
+
+        $hasDeletedAt = $this->hasColumn('family_messages', 'deleted_at');
+        $query = Child::query()
+            ->with([
+                'guardians:id,last_name,first_name',
+            ])
+            ->select('children.*')
+            ->selectSub(function ($sub) use ($adminReadKey, $hasDeletedAt) {
+                $sub->from('family_messages as fm')
+                    ->whereColumn('fm.child_id', 'children.id');
+
+                if ($hasDeletedAt) {
+                    $sub->whereNull('fm.deleted_at');
+                }
+
+                if ($this->hasColumn('family_messages', 'sender_type')) {
+                    $sub->where('fm.sender_type', 'family');
+                }
+
+                if ($adminReadKey) {
+                    $sub->whereNotExists(function ($qq) use ($adminReadKey) {
+                        $qq->from('family_message_admin_reads as fmr')
+                            ->whereColumn("fmr.{$adminReadKey}", 'fm.id')
+                            ->whereColumn('fmr.child_id', 'children.id');
+                    });
+                }
+
+                $sub->selectRaw('COUNT(*)');
+            }, 'unread_message_count')
+            ->having('unread_message_count', '>', 0);
+
+        $q = trim($q);
+        if ($q !== '') {
+            $query->where(function ($builder) use ($q) {
+                $like = "%{$q}%";
+
+                $builder
+                    ->where('children.last_name', 'like', $like)
+                    ->orWhere('children.first_name', 'like', $like)
+                    ->orWhere('children.last_name_kana', 'like', $like)
+                    ->orWhere('children.first_name_kana', 'like', $like)
+                    ->orWhere('children.name', 'like', $like);
+
+                if ($this->hasColumn('children', 'child_code')) {
+                    $builder->orWhere('children.child_code', 'like', $like);
+                }
+
+                $builder->orWhereHas('guardians', function ($guardianQuery) use ($like) {
+                    $guardianQuery->where('last_name', 'like', $like)
+                        ->orWhere('first_name', 'like', $like);
+                });
+            });
+        }
+
+        $query->orderByDesc('unread_message_count');
+        if ($this->hasColumn('children', 'child_code')) {
+            $query->orderBy('children.child_code');
+        }
+
+        return $query
+            ->orderBy('children.last_name')
+            ->orderBy('children.first_name')
+            ->limit(50)
+            ->get();
     }
 
     private function syncToFamilyMessages(int $guardianId, string $body, int $staffId = 0): void

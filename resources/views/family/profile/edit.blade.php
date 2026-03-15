@@ -13,7 +13,13 @@
                     </div>
                 @endif
 
-                @if (session('line_link_error'))
+                @php
+                    $lineIntegrationEnabled = (bool) config('features.line_integration_enabled', false);
+                    $preferredContact = old('preferred_contact', $targetGuardian->preferred_contact ?? '');
+                    $newPreferredContact = old('new_preferred_contact');
+                @endphp
+
+                @if ($lineIntegrationEnabled && session('line_link_error'))
                     <div class="mt-4 rounded-md bg-rose-50 p-3 text-sm text-rose-700">
                         {{ session('line_link_error') }}
                     </div>
@@ -36,7 +42,7 @@
                     $showAddGuardianForm = request()->boolean('add_guardian') || $hasAddGuardianErrors || old('new_last_name') || old('new_first_name');
                 @endphp
 
-                @if($targetGuardian)
+                @if($targetGuardian && $lineIntegrationEnabled)
                     <div class="mt-6 rounded-xl border border-sky-200 bg-sky-50 p-4 sm:p-5">
                         <h2 class="text-base font-semibold text-sky-900">LINE連携</h2>
                         <p class="mt-1 text-sm text-sky-800">
@@ -221,7 +227,11 @@
                                 <option value="">未設定</option>
                                 <option value="email" @selected(old('preferred_contact', $targetGuardian->preferred_contact) === 'email')>メール</option>
                                 <option value="phone" @selected(old('preferred_contact', $targetGuardian->preferred_contact) === 'phone')>電話</option>
-                                <option value="line" @selected(old('preferred_contact', $targetGuardian->preferred_contact) === 'line')>LINE</option>
+                                @if($lineIntegrationEnabled)
+                                    <option value="line" @selected($preferredContact === 'line')>LINE</option>
+                                @elseif($preferredContact === 'line')
+                                    <option value="line" selected hidden>LINE</option>
+                                @endif
                             </select>
                             @error('preferred_contact')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                         </div>
@@ -349,7 +359,9 @@
                                     <option value="">未設定</option>
                                     <option value="email" @selected(old('new_preferred_contact') === 'email')>メール</option>
                                     <option value="phone" @selected(old('new_preferred_contact') === 'phone')>電話</option>
-                                    <option value="line" @selected(old('new_preferred_contact') === 'line')>LINE</option>
+                                    @if($lineIntegrationEnabled)
+                                        <option value="line" @selected($newPreferredContact === 'line')>LINE</option>
+                                    @endif
                                 </select>
                                 @error('new_preferred_contact')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                             </div>

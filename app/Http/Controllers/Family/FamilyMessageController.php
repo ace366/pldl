@@ -200,7 +200,9 @@ class FamilyMessageController extends Controller
 
         $message = FamilyMessage::create($payload);
         $this->syncToChatThread($request, $childId, (string) $validated['body']);
-        $this->syncToLineTimeline($request, $childId, (string) $validated['body'], $lineApi);
+        if ((bool) config('features.line_integration_enabled', false)) {
+            $this->syncToLineTimeline($request, $childId, (string) $validated['body'], $lineApi);
+        }
 
         if ($request->wantsJson()) {
             return response()->json([

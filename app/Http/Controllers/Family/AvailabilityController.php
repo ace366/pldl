@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Family;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChatMessage;
+use App\Models\ChatThread;
 use App\Models\Child;
 use App\Models\FamilyMessage;
 use App\Support\FamilyChildContext;
+use App\Support\FamilyGuardianResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class AvailabilityController extends Controller
@@ -307,10 +311,11 @@ class AvailabilityController extends Controller
 
     private function postTodayCancelReasonMessage(Child $child, string $date, string $reason): void
     {
+        $body = "本日の送迎を解除しました。\n日付：{$date}\n理由：{$reason}";
         $payload = [
             'child_id' => (int)$child->id,
             'title' => '本日の送迎解除',
-            'body' => "本日の送迎を解除しました。\n日付：{$date}\n理由：{$reason}",
+            'body' => $body,
         ];
 
         if (Schema::hasColumn('family_messages', 'sender_type')) {
@@ -318,5 +323,60 @@ class AvailabilityController extends Controller
         }
 
         FamilyMessage::create($payload);
+        $this->syncToChatThread((int) $child->id, $body);
+    }
+
+    private function syncToChatThread(int $childId, string $body): void
+    {
+        if ($childId <= 0 || trim($body) === '') {
+            return;
+        }
+        if (!Schema::hasTable('chat_threads') || !Schema::hasTable('chat_messages')) {
+            return;
+        }
+        if (!Schema::hasColumn('chat_messages', 'thread_id')
+            || !Schema::hasColumn('chat_messages', 'sender_type')
+            || !Schema::hasColumn('chat_messages', 'body')) {
+            return;
+        }
+
+        $guardian = FamilyGuardianResolver::resolveForChild($childId);
+        if (!$guardian) {
+            return;
+        }
+
+        try {
+            $thread = ChatThread::query()->firstOrCreate(
+                ['guardian_id' => (int) $guardian->id],
+                ['status' => 'open']
+            );
+
+            $payload = [
+                'thread_id' => (int) $thread->id,
+                'sender_type' => 'family',
+                'body' => $body,
+            ];
+            if (Schema::hasColumn('chat_messages', 'sender_id')) {
+                $payload['sender_id'] = null;
+            }
+            if (Schema::hasColumn('chat_messages', 'delivery_status')) {
+                $payload['delivery_status'] = 'sent';
+            }
+
+            ChatMessage::query()->create($payload);
+
+            $thread->last_message_at = now();
+            $thread->status = 'open';
+            if (Schema::hasColumn('chat_threads', 'unread_count_staff')) {
+                $thread->unread_count_staff = (int) ($thread->unread_count_staff ?? 0) + 1;
+            }
+            $thread->save();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to sync attendance cancel message to chat thread', [
+                'child_id' => $childId,
+                'guardian_id' => (int) $guardian->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

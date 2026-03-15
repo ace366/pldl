@@ -18,7 +18,7 @@ function updateBadge(count) {
   if (!badge) return;
 
   if (count > 0) {
-    badge.textContent = '1';
+    badge.textContent = count > 99 ? '99+' : String(count);
     badge.classList.remove('hidden');
   } else {
     badge.classList.add('hidden');
@@ -102,7 +102,7 @@ export default function FamilyHomePage({
     '1. 📣 おしらせ：全員に一斉にお知らせしたい内容を表示します。定期的に確認してください。\n' +
     '2. 🔳 マイQR：お子様の出席に使用します。まだ携帯電話がない場合はこちらでカードをご用意します。\n' +
     '3. 📅 送迎：送迎を希望される場合はこちらから登録をお願いします。\n' +
-    '4. 💬 メッセージ：LINE同様こちらからは個別のメッセージ交換ができます。\n' +
+    '4. 💬 メッセージ：こちらから個別のメッセージ交換ができます。\n' +
     '最後にQRコードのカード作成を依頼しますか？返信をお願いします。';
   const initialLastServerId = useMemo(
     () => messages.reduce((max, message) => Math.max(max, getServerId(message.id)), 0),
@@ -377,31 +377,33 @@ export default function FamilyHomePage({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {line?.isLinked ? (
-              <a
-                href={line?.settingsUrl || '#'}
-                className="inline-flex items-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
-              >
-                LINE連携済み（設定）
-              </a>
-            ) : (
-              <>
-                <a
-                  href={line?.connectUrl || '#'}
-                  className="inline-flex items-center rounded-xl bg-[#06C755] px-6 py-3 text-base font-bold text-white shadow-sm hover:brightness-95"
-                >
-                  LINE連携する
-                </a>
+          {line && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {line?.isLinked ? (
                 <a
                   href={line?.settingsUrl || '#'}
-                  className="inline-flex items-center rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                  className="inline-flex items-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                 >
-                  コード連携はこちら
+                  LINE連携済み（設定）
                 </a>
-              </>
-            )}
-          </div>
+              ) : (
+                <>
+                  <a
+                    href={line?.connectUrl || '#'}
+                    className="inline-flex items-center rounded-xl bg-[#06C755] px-6 py-3 text-base font-bold text-white shadow-sm hover:brightness-95"
+                  >
+                    LINE連携する
+                  </a>
+                  <a
+                    href={line?.settingsUrl || '#'}
+                    className="inline-flex items-center rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                  >
+                    コード連携はこちら
+                  </a>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
