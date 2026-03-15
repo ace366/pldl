@@ -18,6 +18,12 @@ function cls(...xs) {
   return xs.filter(Boolean).join(" ");
 }
 
+function todayJst() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+  }).format(new Date());
+}
+
 export default function AdminTodayParticipants(props) {
   const {
     date: initialDate,
@@ -34,6 +40,7 @@ export default function AdminTodayParticipants(props) {
   const canEdit = canEditProp !== false && canEditProp !== "0";
 
   const [date, setDate] = useState(initialDate || "");
+  const isTodayView = date === todayJst();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
@@ -100,6 +107,9 @@ export default function AdminTodayParticipants(props) {
 
   const onSetManual = async (intentId, status) => {
     if (!canEdit || !apiToggleManual || !intentId) return;
+    if (status === "not_arrived" && isTodayView && !window.confirm("この児童を欠席に変更しますか？")) {
+      return;
+    }
     try {
       await postJson(apiToggleManual, { intent_id: intentId, manual_status: status });
       fetchSummary(date);
@@ -201,16 +211,19 @@ export default function AdminTodayParticipants(props) {
                 ) : (
                   children.map((c) => {
                     const state = String(c.state || "");
-                    const resolvedState = state || (c.checked_out ? "checked_out" : c.arrived ? "attending" : c.pickup_confirmed ? "pickup" : "registered");
+                    const isAbsent = isTodayView && (state === "absent" || String(c.manual_status || "") === "not_arrived");
+                    const resolvedState = state || (c.checked_out ? "checked_out" : isAbsent ? "absent" : c.arrived ? "attending" : c.pickup_confirmed ? "pickup" : "registered");
                     const pickupRequired = !!c.pickup_required;
                     const pickupConfirmed = !!c.pickup_confirmed;
                     const checkedOut = resolvedState === "checked_out";
+                    const absent = resolvedState === "absent";
 
                     return (
                       <div
                         key={c.child_id}
                         className={cls(
                           "rounded-2xl border p-3",
+                          absent && "bg-red-50 border-red-200",
                           resolvedState === "pickup" && "bg-amber-50 border-amber-200",
                           resolvedState === "attending" && "bg-emerald-50 border-emerald-200",
                           resolvedState === "checked_out" && "bg-gray-50 border-gray-300",
@@ -224,7 +237,11 @@ export default function AdminTodayParticipants(props) {
                             </div>
 
                             <div className="mt-1 flex items-center gap-2">
-                              {resolvedState === "pickup" ? (
+                              {absent ? (
+                                <span className="text-[11px] px-2 py-0.5 rounded-full border font-semibold bg-red-100 border-red-300 text-red-800">
+                                  欠席
+                                </span>
+                              ) : resolvedState === "pickup" ? (
                                 <span className="text-[11px] px-2 py-0.5 rounded-full border font-semibold bg-amber-100 border-amber-300 text-amber-800">
                                   送迎中
                                 </span>
@@ -268,13 +285,15 @@ export default function AdminTodayParticipants(props) {
                           <button
                             type="button"
                             onClick={() => onTogglePickup(c.intent_id)}
-                            disabled={!canEdit || !c.intent_id}
+                            disabled={!canEdit || !c.intent_id || absent}
                             className={cls(
                               "rounded-2xl border px-3 py-3 flex items-center justify-center gap-2 transition active:scale-[0.99]",
-                              pickupConfirmed
+                              absent
+                                ? "bg-gray-100 border-gray-200 text-gray-400"
+                                : pickupConfirmed
                                 ? "bg-indigo-600 border-indigo-700 text-white shadow"
                                 : "bg-orange-50 border-orange-300 text-orange-900 hover:bg-orange-100",
-                              (!canEdit || !c.intent_id) && "cursor-not-allowed opacity-70"
+                              (!canEdit || !c.intent_id || absent) && "cursor-not-allowed opacity-70"
                             )}
                             aria-label="乗車確認"
                           >
@@ -315,7 +334,7 @@ export default function AdminTodayParticipants(props) {
                                 (!canEdit || !c.intent_id) && "cursor-not-allowed opacity-70"
                               )}
                             >
-                              未到着
+                              {isTodayView ? "欠席" : "未到着"}
                             </button>
                             <button
                               type="button"
@@ -338,16 +357,16 @@ export default function AdminTodayParticipants(props) {
                           <button
                             type="button"
                             onClick={() => onCheckout(c.child_id)}
-                            disabled={!canEdit || checkedOut}
+                            disabled={!canEdit || checkedOut || absent}
                               className={cls(
                                 "w-full rounded-2xl border px-3 py-3 text-sm font-extrabold transition",
-                                checkedOut
+                                checkedOut || absent
                                   ? "bg-gray-200 border-gray-300 text-gray-600"
                                 : "bg-rose-600 border-rose-700 text-white shadow hover:bg-rose-700",
-                              (!canEdit || checkedOut) && "cursor-not-allowed opacity-70"
+                              (!canEdit || checkedOut || absent) && "cursor-not-allowed opacity-70"
                             )}
                           >
-                            {checkedOut ? "帰宅済" : "帰宅"}
+                            {checkedOut ? "帰宅済" : (absent ? "欠席" : "帰宅")}
                           </button>
                         </div>
                       </div>

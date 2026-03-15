@@ -225,6 +225,9 @@ Route::middleware(['auth'])->group(function () {
         Route::get('chats/{thread}/messages', [ChatThreadController::class, 'messages'])->name('chats.messages');
         Route::get('messages/unread-count', [\App\Http\Controllers\Admin\AdminMessageNotificationController::class, 'unreadCount'])
             ->name('messages.unread_count');
+        Route::post('attendance-intents/mark-absent', [AttendanceIntentController::class, 'markAbsent'])
+            ->middleware('perm:attendance_intents,update')
+            ->name('attendance_intents.mark_absent');
     });
 
     // マイQR
