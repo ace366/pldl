@@ -4,22 +4,25 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ChatThread;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 
 class AdminMessageNotificationController extends Controller
 {
-    public function unreadCount(Request $request)
+    public static function resolveUnreadCount(?User $user): int
     {
-        $chatUnread = 0;
-        $hasChatUnread = Schema::hasTable('chat_threads') && Schema::hasColumn('chat_threads', 'unread_count_staff');
-        if ($hasChatUnread) {
-            $chatUnread = (int) ChatThread::query()->sum('unread_count_staff');
-            // 現在運用では admin/chats を正系とするため、重複計上を避ける
-            return response()->json(['count' => $chatUnread]);
+        $role = (string) ($user?->role ?? '');
+        if (!in_array($role, ['admin', 'staff'], true)) {
+            return 0;
         }
 
-        $legacyUnread = 0;
+        $hasChatUnread = Schema::hasTable('chat_threads') && Schema::hasColumn('chat_threads', 'unread_count_staff');
+        if ($hasChatUnread) {
+            // admin/chats を正系として扱い、legacy メッセージとの重複計上を避ける
+            return (int) ChatThread::query()->sum('unread_count_staff');
+        }
+
         $adminReadKey = null;
         if (Schema::hasTable('family_message_admin_reads')) {
             if (Schema::hasColumn('family_message_admin_reads', 'family_message_id')) {
@@ -30,7 +33,7 @@ class AdminMessageNotificationController extends Controller
         }
 
         if (!$adminReadKey) {
-            return response()->json(['count' => $chatUnread]);
+            return 0;
         }
 
         $query = \App\Models\FamilyMessage::query();
@@ -44,9 +47,13 @@ class AdminMessageNotificationController extends Controller
                 ->whereColumn("fmr.{$adminReadKey}", 'family_messages.id');
         });
 
-        $legacyUnread = (int) $query->count();
-        $count = $chatUnread + $legacyUnread;
+        return (int) $query->count();
+    }
 
-        return response()->json(['count' => $count]);
+    public function unreadCount(Request $request)
+    {
+        return response()->json([
+            'count' => self::resolveUnreadCount($request->user()),
+        ]);
     }
 }
