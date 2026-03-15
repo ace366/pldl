@@ -1,0 +1,55 @@
+name: Bug report
+description: バグや不具合の報告
+title: "[BUG] "
+labels: ["bug"]
+
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: どのような問題が発生しているか
+      placeholder: 例）ログイン後に500エラーが発生する
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: バグが発生する手順
+      placeholder: |
+        1. ログインページを開く
+        2. IDとパスワードを入力
+        3. ログインボタンを押す
+        4. エラー発生
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作
+      placeholder: ログイン後にトップページへ遷移する
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作
+      placeholder: 500エラーが表示される
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 環境
+      placeholder: 例）本番 / ローカル / テスト環境
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: エラーログやスクリーンショットなど

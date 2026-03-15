@@ -1,0 +1,51 @@
+name: Feature request
+description: 新機能追加や改善
+title: "[FEATURE] "
+labels: ["enhancement"]
+
+body:
+  - type: textarea
+    id: purpose
+    attributes:
+      label: 目的
+      description: なぜこの機能が必要か
+      placeholder: 保護者がアンケートに回答できるようにする
+    validations:
+      required: true
+
+  - type: textarea
+    id: overview
+    attributes:
+      label: 機能概要
+      description: 実装したい内容
+      placeholder: アンケート作成・回答機能を追加する
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirements
+    attributes:
+      label: 要件
+      placeholder: |
+        - [ ] 管理画面からアンケート作成
+        - [ ] 保護者が回答
+        - [ ] 結果一覧表示
+    validations:
+      required: true
+
+  - type: textarea
+    id: completion
+    attributes:
+      label: 完了条件
+      placeholder: |
+        - [ ] UI作成
+        - [ ] 動作確認
+        - [ ] 本番影響確認
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: 参考資料など

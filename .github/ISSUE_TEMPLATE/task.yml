@@ -1,0 +1,31 @@
+name: Task
+description: 小さめの作業タスク
+title: "[TASK] "
+labels: ["task"]
+
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 作業内容
+      placeholder: attendance一覧の表示崩れ修正
+    validations:
+      required: true
+
+  - type: textarea
+    id: checklist
+    attributes:
+      label: 作業チェックリスト
+      placeholder: |
+        - [ ] 原因調査
+        - [ ] 修正
+        - [ ] 動作確認
+        - [ ] PR作成
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: 関連Issueや参考情報
