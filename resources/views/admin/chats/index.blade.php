@@ -13,6 +13,7 @@
                     $q = (string)($filters['q'] ?? '');
                     $unreadOnly = (bool)($filters['unread_only'] ?? false);
                     $status = (string)($filters['status'] ?? '');
+                    $unreadChildren = $unreadChildren ?? collect();
                 @endphp
 
                 <form method="GET" action="{{ route('admin.chats.index') }}" class="mt-4 rounded-xl border border-gray-200 bg-sky-50 p-3 sm:p-4">
@@ -23,7 +24,7 @@
                                    type="text"
                                    name="q"
                                    value="{{ $q }}"
-                                   placeholder="保護者名 / 児童名"
+                                   placeholder="保護者名 / 児童名 / ID"
                                    class="mt-1 block w-full rounded-xl border-gray-300 text-sm focus:border-sky-500 focus:ring-sky-500">
                         </div>
                         <div>
@@ -53,6 +54,52 @@
                         </a>
                     </div>
                 </form>
+
+                <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-semibold text-amber-900">IDごとの未読一覧</h2>
+                            <p class="mt-1 text-xs text-amber-800">児童IDごとに、未読メッセージがあるスレッドを確認できます。</p>
+                        </div>
+                        <div class="text-xs font-semibold text-amber-900">
+                            {{ $unreadChildren->count() }}件
+                        </div>
+                    </div>
+
+                    <div class="mt-3 space-y-2">
+                        @forelse($unreadChildren as $child)
+                            @php
+                                $guardiansSummary = ($child->guardians ?? collect())
+                                    ->map(fn ($guardian) => trim((string)($guardian->last_name ?? '').' '.(string)($guardian->first_name ?? '')))
+                                    ->filter()
+                                    ->implode(' / ');
+                            @endphp
+                            <a href="{{ route('admin.children.messages.index', $child) }}"
+                               class="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white px-4 py-3 hover:bg-amber-100/60">
+                                <div class="min-w-0">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                            ID {{ $child->child_code ?: $child->id }}
+                                        </span>
+                                        <span class="text-sm font-semibold text-slate-900">
+                                            {{ $child->full_name ?: trim((string)($child->last_name ?? '').' '.(string)($child->first_name ?? '')) ?: ('児童 #'.(int)$child->id) }}
+                                        </span>
+                                    </div>
+                                    @if($guardiansSummary !== '')
+                                        <p class="mt-1 truncate text-xs text-slate-600">保護者: {{ $guardiansSummary }}</p>
+                                    @endif
+                                </div>
+                                <span class="inline-flex min-w-[28px] items-center justify-center rounded-full bg-rose-600 px-2 py-1 text-xs font-bold text-white">
+                                    {{ (int) $child->unread_message_count }}
+                                </span>
+                            </a>
+                        @empty
+                            <div class="rounded-lg border border-dashed border-amber-200 bg-white px-4 py-5 text-center text-sm text-slate-600">
+                                未読メッセージはありません。
+                            </div>
+                        @endforelse
+                    </div>
+                </div>
 
                 <div class="mt-5 space-y-3">
                     @forelse($threads as $thread)
