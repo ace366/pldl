@@ -11,7 +11,7 @@
 
         $isStaffRole = in_array($role, ['teacher', 'staff'], true);
         $isAdminRole = ($role === 'admin');
-        $isStaffOrAdmin = (Auth::check() && ($isStaffRole || $isAdminRole));
+        $isAdminOrStaffRole = (Auth::check() && in_array($role, ['admin', 'staff'], true));
 
         $permCan = function (string $feature, string $action = 'view') use ($role) {
             return \App\Services\RolePermissionService::canRole((string)$role, $feature, $action);
@@ -105,11 +105,14 @@
 
         // メッセージ（新チャット優先）
         $staffMessagesHref = null;
-        if (Auth::check() && in_array((string)$role, ['admin', 'staff', 'teacher'], true) && \Illuminate\Support\Facades\Route::has('admin.chats.index')) {
+        if ($isAdminOrStaffRole && \Illuminate\Support\Facades\Route::has('admin.chats.index')) {
             $staffMessagesHref = route('admin.chats.index');
-        } elseif (Auth::check() && $canChildren && \Illuminate\Support\Facades\Route::has('admin.children.index')) {
+        } elseif ($isAdminOrStaffRole && $canChildren && \Illuminate\Support\Facades\Route::has('admin.children.index')) {
             $staffMessagesHref = route('admin.children.index');
         }
+
+        $isActiveStaffMessages = request()->routeIs('admin.chats.*')
+            || request()->routeIs('admin.children.messages.*');
 
         // ✅ 児童（family）用：参加よてい（スマホ下タブ用）
         $familyAvailabilityHref = null;
@@ -272,7 +275,7 @@
                     @endif
 
                     @if($staffMessagesHref)
-                        <x-nav-link :href="$staffMessagesHref" :active="request()->routeIs('admin.children.*') || request()->routeIs('admin.chats.*')">
+                        <x-nav-link :href="$staffMessagesHref" :active="$isActiveStaffMessages">
                             メッセージ
                         </x-nav-link>
                     @endif
@@ -675,7 +678,23 @@
                             <div class="flex-1"></div>
                         @endif
                     @else
-                        @if($adminFourthHref)
+                        @if($staffMessagesHref)
+                            @php
+                                $adminStaffUnreadMessageCount = (int)($adminStaffUnreadMessageCount ?? 0);
+                                $adminStaffUnreadMessageBadge = $adminStaffUnreadMessageCount > 99 ? '99+' : (string)$adminStaffUnreadMessageCount;
+                            @endphp
+                            <a href="{{ $staffMessagesHref }}"
+                               class="relative flex-1 flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1
+                                      {{ $isActiveStaffMessages ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600' }}">
+                                <div class="text-xl leading-none">💬</div>
+                                <div class="text-[9px] font-semibold leading-none">メッセージ</div>
+                                <span id="admin-message-badge"
+                                      data-count="{{ $adminStaffUnreadMessageCount }}"
+                                      class="absolute top-0.5 right-4 inline-flex h-4 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow {{ $adminStaffUnreadMessageCount > 0 ? '' : 'hidden' }}">
+                                    {{ $adminStaffUnreadMessageBadge }}
+                                </span>
+                            </a>
+                        @elseif($adminFourthHref)
                             <a href="{{ $adminFourthHref }}"
                                class="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1
                                       {{ $adminFourthActive ? 'bg-yellow-50 text-yellow-800' : 'text-gray-600' }}">
@@ -705,6 +724,13 @@
                             <div class="text-xl leading-none">🚗</div>
                             <div class="text-[9px] font-semibold leading-none">送迎</div>
                         </a>
+                    @elseif($staffMessagesHref && $adminFourthHref && $adminFourthHref !== $staffMessagesHref)
+                        <a href="{{ $adminFourthHref }}"
+                           class="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1
+                                  {{ $adminFourthActive ? 'bg-yellow-50 text-yellow-800' : 'text-gray-600' }}">
+                            <div class="text-xl leading-none">{{ $adminFourthIcon }}</div>
+                            <div class="text-[9px] font-semibold leading-none">{{ $adminFourthLabel }}</div>
+                        </a>
                     @else
                         <div class="flex-1"></div>
                     @endif
@@ -722,7 +748,7 @@
 
 @php
     $adminUnreadCountEndpoint = null;
-    if (($role ?? '') === 'admin' && \Illuminate\Support\Facades\Route::has('admin.messages.unread_count')) {
+    if (($isAdminOrStaffRole ?? false) && \Illuminate\Support\Facades\Route::has('admin.messages.unread_count')) {
         $adminUnreadCountEndpoint = route('admin.messages.unread_count');
     }
 
@@ -737,7 +763,7 @@
     }
 @endphp
 
-@if($adminUnreadCountEndpoint)
+@if($adminUnreadCountEndpoint && $isAdminRole)
     <div id="admin-unread-toast"
          class="hidden fixed top-16 right-6 z-50 rounded-xl bg-red-600 px-4 py-3 text-white shadow-lg flex items-center gap-3">
         <div class="text-sm font-semibold">保護者から未読メッセージがあります</div>
@@ -750,25 +776,45 @@
             チャット一覧へ
         </a>
     </div>
+@endif
 
+@if($adminUnreadCountEndpoint)
     <script>
         (function () {
             const endpoint = @json($adminUnreadCountEndpoint);
             if (!endpoint) return;
 
+            const badge = document.getElementById('admin-message-badge');
             const toast = document.getElementById('admin-unread-toast');
             const countEl = document.getElementById('admin-unread-toast-count');
-
             const POLL_INTERVAL_MS = 30000;
 
-            const update = (count) => {
-                if (!toast || !countEl) return;
+            const applyBadge = (count) => {
+                if (!badge) return;
+
+                badge.dataset.count = String(count);
                 if (count > 0) {
-                    countEl.textContent = count;
+                    badge.textContent = count > 99 ? '99+' : String(count);
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            };
+
+            const applyToast = (count) => {
+                if (!toast || !countEl) return;
+
+                if (count > 0) {
+                    countEl.textContent = count > 99 ? '99+' : String(count);
                     toast.classList.remove('hidden');
                 } else {
                     toast.classList.add('hidden');
                 }
+            };
+
+            const apply = (count) => {
+                applyBadge(count);
+                applyToast(count);
             };
 
             const fetchCount = async () => {
@@ -780,13 +826,13 @@
                     });
                     if (!res.ok) return;
                     const data = await res.json();
-                    update(Number(data?.count || 0));
+                    apply(Number(data?.count || 0));
                 } catch (e) {
                     // no-op
                 }
             };
 
-            update(0);
+            apply(Number(badge?.dataset.count || 0));
             fetchCount();
             setInterval(fetchCount, POLL_INTERVAL_MS);
         })();

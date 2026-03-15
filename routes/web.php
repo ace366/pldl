@@ -217,12 +217,14 @@ Route::get('/dashboard', [NoticeController::class, 'index'])
 */
 Route::middleware(['auth'])->group(function () {
 
-    Route::middleware(['role:admin,staff,teacher'])->prefix('admin')->name('admin.')->group(function () {
+    Route::middleware(['role:admin,staff'])->prefix('admin')->name('admin.')->group(function () {
         Route::get('chats', [ChatThreadController::class, 'index'])->name('chats.index');
         Route::get('chats/{thread}', [ChatThreadController::class, 'show'])->name('chats.show');
         Route::post('chats/{thread}/reply', [ChatThreadController::class, 'reply'])->name('chats.reply');
         Route::patch('chats/{thread}/status', [ChatThreadController::class, 'updateStatus'])->name('chats.status.update');
         Route::get('chats/{thread}/messages', [ChatThreadController::class, 'messages'])->name('chats.messages');
+        Route::get('messages/unread-count', [\App\Http\Controllers\Admin\AdminMessageNotificationController::class, 'unreadCount'])
+            ->name('messages.unread_count');
     });
 
     // マイQR
@@ -593,10 +595,6 @@ Route::middleware(['auth'])->group(function () {
         Route::post('children/{child}/messages', [ChildMessageController::class, 'store'])
             ->middleware('perm:children_index,create')
             ->name('children.messages.store');
-
-        // 管理者通知（未読件数）
-        Route::get('messages/unread-count', [\App\Http\Controllers\Admin\AdminMessageNotificationController::class, 'unreadCount'])
-            ->name('messages.unread_count');
 
         Route::get('/attendances/{shiftAttendance}/edit', [\App\Http\Controllers\Admin\AttendanceController::class, 'edit'])
             ->middleware('perm:attendance_month,update')
