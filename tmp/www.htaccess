@@ -1,0 +1,10 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ACME challenge (Let's Encrypt) should bypass rewrites.
+    RewriteRule ^\.well-known/ - [L]
+
+    # Send all requests to Laravel's public directory.
+    RewriteCond %{REQUEST_URI} !^/lab/public/
+    RewriteRule ^(.*)$ /lab/public/$1 [L]
+</IfModule>
