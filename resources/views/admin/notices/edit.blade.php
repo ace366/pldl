@@ -1,4 +1,12 @@
 <x-app-layout>
+    @php
+        // route(..., false) だと本番のサブディレクトリ配備でベースパスが落ちるため、
+        // 現在のリクエストルートを基準に保存・画像アップロード先を組み立てる。
+        $requestRoot = rtrim(request()->root(), '/');
+        $noticeUpdateUrl = $requestRoot.route('admin.notices.update', [], false);
+        $noticeImageUploadUrl = $requestRoot.route('admin.notices.images.store', [], false);
+    @endphp
+
     <div class="py-10">
         <div class="max-w-3xl mx-auto px-4">
 
@@ -12,7 +20,7 @@
                 </div>
             @endif
 
-            <form id="noticeForm" method="POST" action="{{ route('admin.notices.update', [], false) }}" class="space-y-6">
+            <form id="noticeForm" method="POST" action="{{ $noticeUpdateUrl }}" class="space-y-6">
                 @csrf
                 @method('PUT')
 
@@ -227,7 +235,7 @@
                 .replaceAll('"', '&quot;')
                 .replaceAll("'", '&#039;');
             const csrf = form.querySelector('input[name="_token"]')?.value || '';
-            const imageUploadUrl = @json(route('admin.notices.images.store', [], false));
+            const imageUploadUrl = @json($noticeImageUploadUrl);
             const extractYouTubeId = (raw) => {
                 const input = (raw || '').trim();
                 if (!input) return '';

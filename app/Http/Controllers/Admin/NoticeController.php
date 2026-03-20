@@ -88,7 +88,7 @@ class NoticeController extends Controller
         }
 
         return response()->json([
-            'url' => asset($relativeDir.'/'.$name),
+            'url' => rtrim($request->root(), '/').'/'.$relativeDir.'/'.$name,
         ]);
     }
 
