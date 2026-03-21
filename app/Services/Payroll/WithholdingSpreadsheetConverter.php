@@ -7,6 +7,12 @@ use ZipArchive;
 
 class WithholdingSpreadsheetConverter
 {
+    private const KNOWN_NTA_XLS_SHA256 = [
+        2026 => [
+            '01-07' => '50aafa072df1bb6b6aa253a021f7cc246265c3f2393f9988ee01ad121bc4f310',
+        ],
+    ];
+
     /**
      * 既存互換:
      * ヘッダ行が整っているXLSXを直接CSV化
@@ -238,6 +244,43 @@ class WithholdingSpreadsheetConverter
     }
 
     /**
+     * 2026年のNTA公式01-07.xlsは固定変換で扱う。
+     * 汎用xlsパーサは持たず、公式配布物の同一性をハッシュで確認して
+     * あらかじめ正規化したCSVを取り込む。
+     */
+    public function convertKnownNtaXlsToCsv(int $year, string $xlsPath, string $csvPath): int
+    {
+        $fixture = $this->knownNtaCsvFixturePath($year, $xlsPath);
+        if ($fixture === null) {
+            throw new RuntimeException('対応していないxlsファイルです。xlsxまたはcsvで取り込んでください。');
+        }
+
+        $dir = dirname($csvPath);
+        if (!is_dir($dir) && !mkdir($dir, 0777, true) && !is_dir($dir)) {
+            throw new RuntimeException('CSV出力先を作成できませんでした。');
+        }
+        if (!copy($fixture, $csvPath)) {
+            throw new RuntimeException('固定CSVの生成に失敗しました。');
+        }
+
+        $file = new \SplFileObject($fixture);
+        $file->setFlags(\SplFileObject::READ_CSV | \SplFileObject::SKIP_EMPTY);
+
+        $count = 0;
+        foreach ($file as $index => $line) {
+            if ($index === 0 || !is_array($line)) {
+                continue;
+            }
+            if (count($line) === 1 && ($line[0] === null || trim((string)$line[0]) === '')) {
+                continue;
+            }
+            $count++;
+        }
+
+        return $count;
+    }
+
+    /**
      * @return array<int,array<int,array<int,string>>>
      */
     private function extractSheetRows(string $xlsxPath): array
@@ -436,25 +479,28 @@ class WithholdingSpreadsheetConverter
      */
     private function normalizeRange(string $rawMin, string $rawMax, int $prevMax): ?array
     {
-        $hasMinNum = $this->hasNumericToken($rawMin);
-        $hasMaxNum = $this->hasNumericToken($rawMax);
-        if (!$hasMinNum && !$hasMaxNum) {
+        $minInfo = $this->parseRangeCell($rawMin);
+        $maxInfo = $this->parseRangeCell($rawMax);
+
+        if ($minInfo === null && $maxInfo === null) {
             return null;
         }
 
-        $nMin = $this->toInt($rawMin);
-        $nMax = $this->toInt($rawMax);
+        $min = null;
+        $max = null;
 
-        if ($hasMinNum && $hasMaxNum) {
-            $min = $nMin;
-            $max = $nMax;
-        } elseif ($hasMinNum) {
-            // 例: 「105,000円未満」など上限のみ表現
+        if (($minInfo['has_digits'] ?? false) && ($maxInfo['has_digits'] ?? false)) {
+            $min = (int)$minInfo['value'];
+            $max = (int)$maxInfo['value'];
+        } elseif (($minInfo['has_digits'] ?? false) && ($maxInfo['is_upper_bound_marker'] ?? false)) {
+            // 例: B列=105000, C列=円未満
             $min = $prevMax;
-            $max = $nMin;
+            $max = (int)$minInfo['value'];
+        } elseif (($maxInfo['has_digits'] ?? false) && $minInfo === null) {
+            $min = $prevMax;
+            $max = (int)$maxInfo['value'];
         } else {
-            $min = $prevMax;
-            $max = $nMax;
+            return null;
         }
 
         if ($max < $min) {
@@ -465,6 +511,55 @@ class WithholdingSpreadsheetConverter
         }
 
         return [$min, $max];
+    }
+
+    /**
+     * @return array{has_digits:bool,value:int,is_upper_bound_marker:bool}|null
+     */
+    private function parseRangeCell(string $value): ?array
+    {
+        $normalized = mb_convert_kana(trim($value), 'asKVn', 'UTF-8');
+        if ($normalized === '') {
+            return null;
+        }
+
+        $compact = str_replace([',', ' ', '　'], '', $normalized);
+        $isUpperBoundMarker = str_contains($compact, '未満') || str_contains($compact, '以下');
+
+        $sanitized = preg_replace('/\d+/', '', $compact) ?? '';
+        $sanitized = str_replace(
+            ['円', '以上', '未満', '以下', '.', '．', '%', '％', '-', '−', '―', '‐', '(', ')', '（', '）'],
+            '',
+            $sanitized
+        );
+
+        if ($sanitized !== '') {
+            return null;
+        }
+
+        $digits = preg_replace('/\D/', '', $compact) ?? '';
+
+        return [
+            'has_digits' => $digits !== '',
+            'value' => $digits === '' ? 0 : (int)$digits,
+            'is_upper_bound_marker' => $isUpperBoundMarker,
+        ];
+    }
+
+    private function knownNtaCsvFixturePath(int $year, string $xlsPath): ?string
+    {
+        if ($year !== 2026) {
+            return null;
+        }
+
+        $hash = strtolower((string)hash_file('sha256', $xlsPath));
+        $expected = self::KNOWN_NTA_XLS_SHA256[$year]['01-07'] ?? null;
+
+        if ($expected === null || $hash !== $expected) {
+            return null;
+        }
+
+        return dirname(__DIR__, 3).'/resources/withholding/official_2026_01-07.csv';
     }
 
     private function columnToIndex(string $cellRef): int
@@ -494,4 +589,3 @@ class WithholdingSpreadsheetConverter
         return $letters;
     }
 }
-

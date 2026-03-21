@@ -68,7 +68,11 @@ class WithholdingTaxImportController extends Controller
      * - csv/txt はそのまま取込
      * - xlsx はマッピング画面へ遷移
      */
-    public function import(Request $request, WithholdingTaxImporter $importer)
+    public function import(
+        Request $request,
+        WithholdingTaxImporter $importer,
+        WithholdingSpreadsheetConverter $converter
+    )
     {
         $data = $request->validate([
             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
@@ -98,7 +102,17 @@ class WithholdingTaxImportController extends Controller
             }
 
             if ($ext === 'xls') {
-                throw new \RuntimeException('xls形式は直接変換できません。Excelでxlsxまたはcsvで保存して取り込んでください。');
+                $targetCsv = storage_path('app/withholding/withholding_tax_'.$year.'.csv');
+                $this->ensureWithholdingDir();
+                $count = $converter->convertKnownNtaXlsToCsv($year, $sourcePath, $targetCsv);
+                $count = $importer->import($year, $targetCsv);
+                if ($deleteAfter && is_file($sourcePath)) {
+                    @unlink($sourcePath);
+                }
+
+                return redirect()
+                    ->route('admin.payroll.withholding.index', ['year' => $year])
+                    ->with('success', "{$year}年の税額表を {$count} 行取り込みました。");
             }
 
             if ($ext === 'xlsx') {
@@ -310,4 +324,3 @@ class WithholdingTaxImportController extends Controller
         }
     }
 }
-

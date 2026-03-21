@@ -5,9 +5,12 @@ namespace App\Services\Payroll;
 use App\Models\WithholdingTaxTable;
 use Illuminate\Support\Carbon;
 use InvalidArgumentException;
+use RuntimeException;
 
 class WithholdingTaxImporter
 {
+    private const UNSIGNED_INT_MAX = 4294967295;
+
     /**
      * @return int upsert対象行数
      */
@@ -21,6 +24,7 @@ class WithholdingTaxImporter
         }
 
         $rows = [];
+        $invalidRows = [];
         $now = Carbon::now();
 
         $file = new \SplFileObject($path);
@@ -55,9 +59,13 @@ class WithholdingTaxImporter
                 $dep = 0;
             }
 
-            $min = max(0, (int)$minAmount);
-            $max = max(0, (int)$maxAmount);
-            $tax = max(0, (int)$taxAmount);
+            $min = $this->parseUnsignedInteger($minAmount);
+            $max = $this->parseUnsignedInteger($maxAmount);
+            $tax = $this->parseUnsignedInteger($taxAmount);
+            if ($min === null || $max === null || $tax === null) {
+                $invalidRows[] = $index + 1;
+                continue;
+            }
             if ($min > $max) {
                 continue;
             }
@@ -76,7 +84,14 @@ class WithholdingTaxImporter
         }
 
         if ($rows === []) {
+            if ($invalidRows !== []) {
+                throw new RuntimeException('CSV内に保存できない金額が含まれます。該当行: '.implode(', ', $invalidRows));
+            }
             return 0;
+        }
+
+        if ($invalidRows !== []) {
+            throw new RuntimeException('CSV内に保存できない金額が含まれます。該当行: '.implode(', ', $invalidRows));
         }
 
         WithholdingTaxTable::query()->upsert(
@@ -87,5 +102,24 @@ class WithholdingTaxImporter
 
         return count($rows);
     }
-}
 
+    private function parseUnsignedInteger(string $value): ?int
+    {
+        $digits = preg_replace('/[^\d]/', '', trim($value)) ?? '';
+        if ($digits === '') {
+            return 0;
+        }
+
+        if (strlen($digits) > strlen((string)self::UNSIGNED_INT_MAX)) {
+            return null;
+        }
+        if (
+            strlen($digits) === strlen((string)self::UNSIGNED_INT_MAX)
+            && strcmp($digits, (string)self::UNSIGNED_INT_MAX) > 0
+        ) {
+            return null;
+        }
+
+        return (int)$digits;
+    }
+}

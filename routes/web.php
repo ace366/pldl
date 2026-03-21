@@ -98,6 +98,7 @@ Route::prefix('family')->name('family.')->group(function () {
 
     // 一括ON（※現状仕様維持）
     Route::post('availability/bulk-on', [\App\Http\Controllers\Family\AvailabilityController::class, 'bulkOn'])
+        ->middleware(EnsureFamilyChildAuthenticated::class)
         ->name('availability.bulk_on');
 
     // 管理者メッセージ：過去ログ
@@ -323,6 +324,9 @@ Route::middleware(['auth'])->group(function () {
         /*
         | シフト（作成/編集/削除）
         */
+        Route::get('/shifts/create/react', [\App\Http\Controllers\Admin\ShiftController::class, 'react'])
+            ->middleware('perm:shift_day,create')
+            ->name('shifts.create.react');
         Route::get('/shifts/create', [\App\Http\Controllers\Admin\ShiftController::class, 'create'])
             ->middleware('perm:shift_day,create')
             ->name('shifts.create');

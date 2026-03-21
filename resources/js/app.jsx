@@ -98,6 +98,37 @@ function mountAdminTodayParticipants() {
     createRoot(el).render(<Component {...props} />);
   });
 }
+
+/**
+ * admin/shifts/create/react
+ */
+function mountAdminShiftCreate() {
+  const el = document.getElementById('react-admin-shift-create');
+  if (!el) return;
+
+  const load = async () => {
+    const mod = await import('./pages/admin/ShiftCreatePage.jsx');
+    return mod.default;
+  };
+
+  const propsEl = document.getElementById('admin-shift-create-props');
+  let props = null;
+
+  try {
+    props = propsEl ? JSON.parse(propsEl.textContent || '{}') : null;
+  } catch (e) {
+    props = null;
+  }
+
+  if (!props) return;
+
+  if (el.dataset.mounted === '1') return;
+  el.dataset.mounted = '1';
+
+  load().then((Component) => {
+    createRoot(el).render(<Component {...props} />);
+  });
+}
 /**
  * family/availability (React)
  * - availability_react.blade.php に
@@ -167,6 +198,7 @@ function mountFamilySiblings() {
 mountStaffAttendanceToday();
 mountAdminAttendanceIntents();
 mountAdminTodayParticipants();
+mountAdminShiftCreate();
 mountFamilyAvailability();
 mountFamilySiblings();
 

@@ -1,4 +1,16 @@
-<nav x-data="{ mobileMenu: false }"
+<nav x-data="{
+        mobileMenu: false,
+        sections: {
+            general: true,
+            kintai: true,
+            ops: true,
+            account: true,
+        },
+        toggleSection(name) {
+            this.sections[name] = !this.sections[name];
+        },
+    }"
+     @keydown.escape.window="mobileMenu = false"
      class="bg-white border-b border-gray-100
             fixed top-0 inset-x-0 z-50 shadow">
     @php
@@ -12,6 +24,7 @@
         $isStaffRole = in_array($role, ['teacher', 'staff'], true);
         $isAdminRole = ($role === 'admin');
         $isAdminOrStaffRole = (Auth::check() && in_array($role, ['admin', 'staff'], true));
+        $showAdminMobileSidebar = (Auth::check() && $isAdminRole && !$isFamily);
 
         $permCan = function (string $feature, string $action = 'view') use ($role) {
             return \App\Services\RolePermissionService::canRole((string)$role, $feature, $action);
@@ -22,6 +35,7 @@
         $canAttendanceQr = $permCan('attendance_qr');
         $canChildQrScan = $permCan('child_qr_scan');
         $canShiftDay = $permCan('shift_day');
+        $canShiftCreate = $permCan('shift_day', 'create');
         $canShiftMonth = $permCan('shift_month');
         $canAttendanceMonth = $permCan('attendance_month');
         $canAuditLogs = $permCan('audit_logs');
@@ -96,6 +110,15 @@
             $kintaiHref = $todayKintaiHref;
         } elseif (Auth::check() && $canShiftDay && \Illuminate\Support\Facades\Route::has('admin.shifts.index')) {
             $kintaiHref = route('admin.shifts.index');
+        }
+
+        $shiftCreateHref = null;
+        if (Auth::check() && $canShiftCreate) {
+            if (\Illuminate\Support\Facades\Route::has('admin.shifts.create.react')) {
+                $shiftCreateHref = route('admin.shifts.create.react');
+            } elseif (\Illuminate\Support\Facades\Route::has('admin.shifts.create')) {
+                $shiftCreateHref = route('admin.shifts.create');
+            }
         }
 
         // 児童管理（adminのみ）
@@ -209,17 +232,60 @@
 
         // PCで「今日の勤怠（打刻）」リンクを出すか
         $showTodayKintaiLink = (bool)$todayKintaiHref;
+        $profileHref = Auth::check() && \Illuminate\Support\Facades\Route::has('profile.edit')
+            ? route('profile.edit')
+            : '#';
+        $attendanceHistoryHref = \Illuminate\Support\Facades\Route::has('staff.attendance.history')
+            ? route('staff.attendance.history')
+            : null;
+        $attendanceMonthHref = ($canAttendanceMonth && \Illuminate\Support\Facades\Route::has('admin.attendances.index'))
+            ? route('admin.attendances.index')
+            : null;
+        $auditLogsHref = ($canAuditLogs && \Illuminate\Support\Facades\Route::has('admin.attendance_logs.index'))
+            ? route('admin.attendance_logs.index')
+            : null;
+        $closingsHref = ($canClosings && \Illuminate\Support\Facades\Route::has('admin.closings.index'))
+            ? route('admin.closings.index')
+            : null;
+        $payrollHref = ($isAdminRole && \Illuminate\Support\Facades\Route::has('admin.payroll.index'))
+            ? route('admin.payroll.index')
+            : null;
+        $withholdingHref = ($isAdminRole && \Illuminate\Support\Facades\Route::has('admin.payroll.withholding.index'))
+            ? route('admin.payroll.withholding.index', ['year' => now()->format('Y')])
+            : null;
+        $schoolsHref = ($canSchools && \Illuminate\Support\Facades\Route::has('admin.schools.index'))
+            ? route('admin.schools.index')
+            : null;
+        $basesHref = ($canBases && \Illuminate\Support\Facades\Route::has('admin.bases.index'))
+            ? route('admin.bases.index')
+            : null;
+        $guardiansHref = ($canGuardians && \Illuminate\Support\Facades\Route::has('admin.guardians.index'))
+            ? route('admin.guardians.index')
+            : null;
+        $adminUsersHref = ($canAdminUsers && \Illuminate\Support\Facades\Route::has('admin.users.index'))
+            ? route('admin.users.index')
+            : null;
+        $permissionsHref = ($isAdminRole && \Illuminate\Support\Facades\Route::has('admin.permissions.index'))
+            ? route('admin.permissions.index')
+            : null;
+        $childrenTodayHref = ($canChildren && \Illuminate\Support\Facades\Route::has('admin.children.today'))
+            ? route('admin.children.today')
+            : null;
 
         // Active判定
         $isActiveMyQr = request()->is('my-qr*') || request()->routeIs('myqr.*') || request()->routeIs('qr.*') || request()->routeIs('family.child.qr');
         $isActiveKintai = request()->routeIs('staff.attendance.*')
-            || request()->routeIs('admin.shifts.*')
+            || request()->routeIs('admin.shifts.index')
+            || request()->routeIs('admin.shifts.month')
+            || request()->routeIs('admin.shifts.edit')
             || request()->routeIs('admin.attendances.*')
             || request()->routeIs('admin.attendance_logs.*')
             || request()->routeIs('admin.closings.*')
             || request()->routeIs('admin.payroll.*');
 
         $isActiveNotice = $isFamily ? request()->routeIs('family.notices.*') : request()->routeIs('dashboard');
+        $isActiveShiftCreate = request()->routeIs('admin.shifts.create')
+            || request()->routeIs('admin.shifts.create.react');
 
         // 児童QR読み取り（出席登録）をPCナビでActive扱いにする
         $isActiveChildScan = request()->routeIs('admin.attendance.scan') || request()->routeIs('admin.attendance.*');
@@ -230,6 +296,18 @@
             request()->routeIs('admin.attendance_intents.*')
             || request()->routeIs('attendance_intents.react')
             || request()->routeIs('attendance_intents.api.*');
+        $isActiveOpsMenu =
+            request()->routeIs('admin.attendance.*')
+            || request()->routeIs('admin.attendance_intents.*')
+            || request()->routeIs('attendance_intents.react')
+            || request()->routeIs('attendance_intents.api.*')
+            || request()->routeIs('admin.schools.*')
+            || request()->routeIs('admin.bases.*')
+            || request()->routeIs('admin.children.*')
+            || request()->routeIs('admin.guardians.*')
+            || request()->routeIs('admin.users.*')
+            || request()->routeIs('admin.permissions.*');
+        $isActiveAccount = request()->routeIs('profile.*');
 
         // ✅ 児童（family）参加よてい Active
         $isActiveFamilyAvailability = $isFamily && request()->routeIs('family.availability.*');
@@ -238,8 +316,35 @@
     <!-- メインナビ（PCは左寄せ） -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center h-12">
+            @if($showAdminMobileSidebar)
+                <div class="flex w-full items-center justify-between sm:hidden">
+                    <button
+                        type="button"
+                        class="inline-flex items-center justify-center w-10 h-10 rounded-2xl border border-gray-200 bg-white text-gray-700 shadow-sm transition hover:border-gray-300 hover:text-gray-900"
+                        aria-label="管理メニュー"
+                        @click="mobileMenu = true"
+                    >
+                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+
+                    <div class="flex flex-1 justify-center px-3">
+                        <a href="{{ $noticeHref }}" class="inline-flex items-center justify-center">
+                            <img src="{{ asset('images/ver2.png') }}"
+                                 alt="{{ config('app.name') }}"
+                                 class="h-9 w-auto">
+                        </a>
+                    </div>
+
+                    <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-gray-50 text-[10px] font-bold text-gray-400">
+                        管理
+                    </div>
+                </div>
+            @endif
+
             <!-- 左側：ロゴ＋PCリンク群（左寄せ固定） -->
-            <div class="flex items-center flex-1 min-w-0">
+            <div class="{{ $showAdminMobileSidebar ? 'hidden sm:flex' : 'flex' }} items-center flex-1 min-w-0">
                 <!-- ロゴ -->
                 <div class="shrink-0 flex items-center">
                     <a href="{{ $isFamily ? ( \Illuminate\Support\Facades\Route::has('family.home') ? route('family.home') : url('/') ) : ( \Illuminate\Support\Facades\Route::has('dashboard') ? route('dashboard') : url('/') ) }}">
@@ -396,15 +501,7 @@
                             <x-dropdown align="left" width="72">
                                 <x-slot name="trigger">
                                     <button class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-semibold leading-5 transition
-                                                {{ request()->routeIs('admin.attendance.*')
-                                                    || request()->routeIs('admin.attendance_intents.*')
-                                                    || request()->routeIs('attendance_intents.react')
-                                                    || request()->routeIs('attendance_intents.api.*')
-                                                    || request()->routeIs('admin.schools.*')
-                                                    || request()->routeIs('admin.bases.*')
-                                                    || request()->routeIs('admin.children.*')
-                                                    || request()->routeIs('admin.guardians.*')
-                                                    || request()->routeIs('admin.users.*')
+                                                {{ $isActiveOpsMenu
                                                         ? 'border-indigo-400 text-gray-900'
                                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                                 }}">
@@ -489,7 +586,7 @@
             </div>
 
             <!-- スマホ：ハンバーガー（右端） -->
-            @if(Auth::check() || $isFamily)
+            @if((Auth::check() || $isFamily) && !$showAdminMobileSidebar)
                 <button
                     type="button"
                     class="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-md border border-gray-200 text-gray-600 hover:text-gray-800 hover:border-gray-300 transition"
@@ -570,7 +667,208 @@
     </div>
 
     <!-- スマホメニュー（上部） -->
-    @if(Auth::check() || $isFamily)
+    @if($showAdminMobileSidebar)
+        <div
+            x-show="mobileMenu"
+            class="sm:hidden fixed inset-0 z-[70]"
+            style="display: none;"
+        >
+            <div
+                x-show="mobileMenu"
+                x-transition.opacity
+                class="absolute inset-0 bg-slate-950/45 backdrop-blur-[1px]"
+                @click="mobileMenu = false"
+            ></div>
+
+            <aside
+                x-show="mobileMenu"
+                x-transition:enter="transform transition ease-out duration-200"
+                x-transition:enter-start="-translate-x-full"
+                x-transition:enter-end="translate-x-0"
+                x-transition:leave="transform transition ease-in duration-150"
+                x-transition:leave-start="translate-x-0"
+                x-transition:leave-end="-translate-x-full"
+                class="absolute inset-y-0 left-0 flex w-[86vw] max-w-sm flex-col overflow-hidden rounded-r-[2rem] bg-white shadow-2xl"
+            >
+                <div class="border-b border-slate-200 bg-slate-950 px-5 py-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-300">Admin Menu</div>
+                            <div class="mt-1 text-lg font-black leading-tight">管理メニュー</div>
+                        </div>
+                        <button
+                            type="button"
+                            class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-white transition hover:bg-white/20"
+                            aria-label="閉じる"
+                            @click="mobileMenu = false"
+                        >
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="mt-4 flex items-center gap-3 rounded-2xl bg-white/10 px-3 py-3">
+                        <img src="{{ asset('images/ver2.png') }}" alt="{{ config('app.name') }}" class="h-9 w-auto rounded-xl bg-white p-1.5">
+                        <div class="min-w-0">
+                            <div class="truncate text-sm font-bold">{{ Auth::user()->name ?? '管理者' }}</div>
+                            <div class="text-xs text-slate-300">スマホ用ショートカット</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-1 overflow-y-auto bg-slate-50 px-3 py-3">
+                    <div class="space-y-3">
+                        <section class="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
+                            <button type="button"
+                                    class="flex w-full items-center justify-between px-4 py-3 text-left"
+                                    @click="toggleSection('general')">
+                                <div>
+                                    <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">General</div>
+                                    <div class="text-sm font-black text-slate-900">おしらせ / 基本導線</div>
+                                </div>
+                                <svg class="h-5 w-5 text-slate-500 transition" :class="sections.general ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <div x-show="sections.general" x-transition.opacity.duration.150ms class="border-t border-slate-100 px-2 py-2">
+                                <div class="space-y-1">
+                                    <a href="{{ $noticeHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActiveNotice ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">おしらせ</a>
+                                    @if($myQrHref)
+                                        <a href="{{ $myQrHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActiveMyQr ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700 hover:bg-slate-100' }}">マイQR</a>
+                                    @endif
+                                    @if($pickupHref)
+                                        <a href="{{ $pickupHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActivePickup ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">参加予定（送迎）</a>
+                                    @endif
+                                    @if($staffMessagesHref)
+                                        <a href="{{ $staffMessagesHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActiveStaffMessages ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700 hover:bg-slate-100' }}">メッセージ</a>
+                                    @endif
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
+                            <button type="button"
+                                    class="flex w-full items-center justify-between px-4 py-3 text-left"
+                                    @click="toggleSection('kintai')">
+                                <div>
+                                    <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Work</div>
+                                    <div class="text-sm font-black text-slate-900">勤怠管理</div>
+                                </div>
+                                <svg class="h-5 w-5 text-slate-500 transition" :class="sections.kintai ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <div x-show="sections.kintai" x-transition.opacity.duration.150ms class="border-t border-slate-100 px-2 py-2">
+                                <div class="space-y-1">
+                                    @if($todayKintaiHref)
+                                        <a href="{{ $todayKintaiHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('staff.attendance.today') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">今日の勤怠（打刻）</a>
+                                    @endif
+                                    @if($staffQrScanHref)
+                                        <a href="{{ $staffQrScanHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('staff.attendance.qr') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">出退勤（読み取り）</a>
+                                    @endif
+                                    @if($attendanceHistoryHref)
+                                        <a href="{{ $attendanceHistoryHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('staff.attendance.history') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">勤怠履歴</a>
+                                    @endif
+                                    @if($canShiftDay && \Illuminate\Support\Facades\Route::has('admin.shifts.index'))
+                                        <a href="{{ route('admin.shifts.index') }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.shifts.index') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">シフト（日別）</a>
+                                    @endif
+                                    @if($canShiftMonth && \Illuminate\Support\Facades\Route::has('admin.shifts.month'))
+                                        <a href="{{ route('admin.shifts.month') }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.shifts.month') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">シフト（月表示）</a>
+                                    @endif
+                                    @if($shiftCreateHref)
+                                        <a href="{{ $shiftCreateHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActiveShiftCreate ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700 hover:bg-slate-100' }}">シフト登録</a>
+                                    @endif
+                                    @if($attendanceMonthHref)
+                                        <a href="{{ $attendanceMonthHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.attendances.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">勤怠（月次）</a>
+                                    @endif
+                                    @if($auditLogsHref)
+                                        <a href="{{ $auditLogsHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.attendance_logs.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">監査ログ</a>
+                                    @endif
+                                    @if($closingsHref)
+                                        <a href="{{ $closingsHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.closings.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">月次締め</a>
+                                    @endif
+                                    @if($payrollHref)
+                                        <a href="{{ $payrollHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.payroll.index') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">従業員給与一覧</a>
+                                    @endif
+                                    @if($withholdingHref)
+                                        <a href="{{ $withholdingHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.payroll.withholding.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">源泉税テーブル取込</a>
+                                    @endif
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
+                            <button type="button"
+                                    class="flex w-full items-center justify-between px-4 py-3 text-left"
+                                    @click="toggleSection('ops')">
+                                <div>
+                                    <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Ops</div>
+                                    <div class="text-sm font-black text-slate-900">運営管理</div>
+                                </div>
+                                <svg class="h-5 w-5 text-slate-500 transition" :class="sections.ops ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <div x-show="sections.ops" x-transition.opacity.duration.150ms class="border-t border-slate-100 px-2 py-2">
+                                <div class="space-y-1">
+                                    @if($pickupHref)
+                                        <a href="{{ $pickupHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActivePickup ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">参加予定（送迎）</a>
+                                    @endif
+                                    @if($childQrScanHref)
+                                        <a href="{{ $childQrScanHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActiveChildScan ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">児童QR（読み取り）</a>
+                                    @endif
+                                    @if($childrenTodayHref)
+                                        <a href="{{ $childrenTodayHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.children.today') || request()->routeIs('admin.children.today.react') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">当日の参加者</a>
+                                    @endif
+                                    @if($schoolsHref)
+                                        <a href="{{ $schoolsHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.schools.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">学校マスタ</a>
+                                    @endif
+                                    @if($basesHref)
+                                        <a href="{{ $basesHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.bases.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">拠点マスタ</a>
+                                    @endif
+                                    @if($childrenIndexHref)
+                                        <a href="{{ $childrenIndexHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.children.index') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">児童管理（一覧）</a>
+                                    @endif
+                                    @if($guardiansHref)
+                                        <a href="{{ $guardiansHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.guardians.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">保護者管理</a>
+                                    @endif
+                                    @if($adminUsersHref)
+                                        <a href="{{ $adminUsersHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.users.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">管理者管理</a>
+                                    @endif
+                                    @if($permissionsHref)
+                                        <a href="{{ $permissionsHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ request()->routeIs('admin.permissions.*') ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">権限設定</a>
+                                    @endif
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-sm">
+                            <button type="button"
+                                    class="flex w-full items-center justify-between px-4 py-3 text-left"
+                                    @click="toggleSection('account')">
+                                <div>
+                                    <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Account</div>
+                                    <div class="text-sm font-black text-slate-900">アカウント</div>
+                                </div>
+                                <svg class="h-5 w-5 text-slate-500 transition" :class="sections.account ? 'rotate-180' : ''" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.51a.75.75 0 01-1.08 0l-4.25-4.51a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                            <div x-show="sections.account" x-transition.opacity.duration.150ms class="border-t border-slate-100 px-2 py-2">
+                                <div class="space-y-1">
+                                    <a href="{{ $profileHref }}" class="block rounded-2xl px-3 py-3 text-sm font-semibold {{ $isActiveAccount ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-100' }}">登録情報の変更</a>
+                                    <form method="POST" action="{{ $logoutAction }}">
+                                        @csrf
+                                        <button type="submit" class="block w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold text-rose-700 hover:bg-rose-50">ログアウト</button>
+                                    </form>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    @elseif(Auth::check() || $isFamily)
         <div
             x-show="mobileMenu"
             x-transition
@@ -602,11 +900,11 @@
         </div>
     @endif
 
-    {{-- ✅ スマホ下固定メニューバー（5アイコン） --}}
+    {{-- ✅ スマホ下固定メニューバー --}}
     <div class="sm:hidden fixed bottom-0 inset-x-0 z-50">
         <div class="bg-white/95 backdrop-blur border-t border-gray-200 shadow-[0_-6px_20px_rgba(0,0,0,0.08)]">
             <div class="max-w-7xl mx-auto px-2">
-                <div class="flex items-stretch justify-between gap-2 py-1">
+                <div class="flex items-stretch justify-between gap-1 py-1">
 
                     {{-- おしらせ --}}
                     <a href="{{ $noticeHref }}"
@@ -654,6 +952,22 @@
                                       {{ $isActiveKintai ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600' }}">
                                 <div class="text-xl leading-none">🕒</div>
                                 <div class="text-[9px] font-semibold leading-none">勤怠</div>
+                            </a>
+                        @else
+                            <div class="flex-1"></div>
+                        @endif
+                    @endif
+
+                    {{-- シフト登録 --}}
+                    @if(!$isFamily)
+                        @if($shiftCreateHref)
+                            <a href="{{ $shiftCreateHref }}"
+                               class="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-2xl py-1
+                                      {{ $isActiveShiftCreate ? 'bg-emerald-50 text-emerald-700' : 'text-gray-600' }}">
+                                <img src="{{ asset('images/icons8.png') }}"
+                                     alt="シフト登録"
+                                     class="h-5 w-5 object-contain">
+                                <div class="text-[9px] font-semibold leading-none">シフト</div>
                             </a>
                         @else
                             <div class="flex-1"></div>

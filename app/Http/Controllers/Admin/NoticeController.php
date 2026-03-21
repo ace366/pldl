@@ -49,24 +49,31 @@ class NoticeController extends Controller
 
     public function uploadImage(Request $request)
     {
+        $field = $request->hasFile('video') ? 'video' : 'image';
+        $isVideo = $field === 'video';
         $validated = $request->validate([
-            'image' => [
+            $field => [
                 'required',
                 'file',
-                'max:15360', // 15MB
-                'mimetypes:image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/avif',
+                $isVideo ? 'max:51200' : 'max:15360',
+                $isVideo
+                    ? 'mimetypes:video/mp4,video/quicktime,video/webm,video/3gpp,video/3gpp2,video/x-m4v'
+                    : 'mimetypes:image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/avif',
             ],
         ], [
-            'image.required' => '画像ファイルを選択してください。',
-            'image.file' => '画像ファイルを選択してください。',
-            'image.max' => '画像サイズは15MB以下にしてください。',
-            'image.mimetypes' => 'jpg / png / gif / webp / heic / avif の画像を選択してください。',
+            $field.'.required' => $isVideo ? '動画ファイルを選択してください。' : '画像ファイルを選択してください。',
+            $field.'.file' => $isVideo ? '動画ファイルを選択してください。' : '画像ファイルを選択してください。',
+            $field.'.max' => $isVideo ? '動画サイズは50MB以下にしてください。' : '画像サイズは15MB以下にしてください。',
+            $field.'.mimetypes' => $isVideo
+                ? 'mp4 / mov / webm / 3gp 系の動画を選択してください。'
+                : 'jpg / png / gif / webp / heic / avif の画像を選択してください。',
         ]);
 
-        $file = $validated['image'];
-        $ext = strtolower((string)($file->getClientOriginalExtension() ?: $file->extension() ?: 'jpg'));
+        $file = $validated[$field];
+        $defaultExt = $isVideo ? 'mp4' : 'jpg';
+        $ext = strtolower((string)($file->getClientOriginalExtension() ?: $file->extension() ?: $defaultExt));
         $name = now()->format('YmdHis').'-'.Str::random(10).'.'.$ext;
-        $relativeDir = 'uploads/notice-images';
+        $relativeDir = $isVideo ? 'uploads/notice-videos' : 'uploads/notice-images';
         $absoluteDir = public_path($relativeDir);
 
         if (!is_dir($absoluteDir)) {
@@ -83,12 +90,15 @@ class NoticeController extends Controller
         } catch (\Throwable $e) {
             report($e);
             return response()->json([
-                'message' => '画像の保存に失敗しました。時間をおいて再度お試しください。',
+                'message' => $isVideo
+                    ? '動画の保存に失敗しました。時間をおいて再度お試しください。'
+                    : '画像の保存に失敗しました。時間をおいて再度お試しください。',
             ], 500);
         }
 
         return response()->json([
             'url' => rtrim($request->root(), '/').'/'.$relativeDir.'/'.$name,
+            'type' => $isVideo ? 'video' : 'image',
         ]);
     }
 
@@ -113,7 +123,7 @@ class NoticeController extends Controller
             return '';
         }
 
-        $allowedTags = ['p', 'br', 'strong', 'b', 'u', 'span', 'ol', 'ul', 'li', 'a', 'font', 'div', 'img', 'iframe'];
+        $allowedTags = ['p', 'br', 'strong', 'b', 'u', 'span', 'ol', 'ul', 'li', 'a', 'font', 'div', 'img', 'iframe', 'video'];
 
         $sanitizeNode = function (\DOMNode $node) use (&$sanitizeNode, $allowedTags): void {
             for ($child = $node->firstChild; $child !== null; ) {
@@ -144,6 +154,7 @@ class NoticeController extends Controller
                 'font' => ['style', 'color', 'size'],
                 'img' => ['src', 'alt', 'loading', 'decoding', 'referrerpolicy'],
                 'iframe' => ['src', 'title', 'allow', 'allowfullscreen', 'loading', 'referrerpolicy'],
+                'video' => ['src', 'controls', 'playsinline', 'preload', 'referrerpolicy'],
                 default => [],
             };
 
@@ -216,7 +227,7 @@ class NoticeController extends Controller
 
             if ($tag === 'img') {
                 $src = trim((string)$node->getAttribute('src'));
-                if (!$this->isSafeImageSrc($src)) {
+                if (!$this->isSafeMediaSrc($src)) {
                     $node->parentNode?->removeChild($node);
                     return;
                 }
@@ -226,6 +237,20 @@ class NoticeController extends Controller
                 $node->setAttribute('alt', $alt);
                 $node->setAttribute('loading', 'lazy');
                 $node->setAttribute('decoding', 'async');
+                $node->setAttribute('referrerpolicy', 'no-referrer');
+            }
+
+            if ($tag === 'video') {
+                $src = trim((string)$node->getAttribute('src'));
+                if (!$this->isSafeMediaSrc($src)) {
+                    $node->parentNode?->removeChild($node);
+                    return;
+                }
+
+                $node->setAttribute('src', $src);
+                $node->setAttribute('controls', 'controls');
+                $node->setAttribute('playsinline', 'playsinline');
+                $node->setAttribute('preload', 'metadata');
                 $node->setAttribute('referrerpolicy', 'no-referrer');
             }
 
@@ -324,7 +349,7 @@ class NoticeController extends Controller
         return null;
     }
 
-    private function isSafeImageSrc(string $src): bool
+    private function isSafeMediaSrc(string $src): bool
     {
         if ($src === '') {
             return false;

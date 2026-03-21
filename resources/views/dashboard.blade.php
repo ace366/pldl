@@ -85,6 +85,15 @@
                 margin: 0.6rem 0;
                 background: #000;
             }
+            .notice-rich-body video {
+                display: block;
+                width: 100%;
+                max-width: 100%;
+                height: auto;
+                border-radius: 0.75rem;
+                margin: 0.6rem 0;
+                background: #000;
+            }
         </style>
     @endonce
 </x-app-layout>

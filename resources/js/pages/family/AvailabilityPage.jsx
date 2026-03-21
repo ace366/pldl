@@ -40,6 +40,12 @@ export default function AvailabilityPage(props) {
   const [bulkAction, setBulkAction] = useState("on"); // on/off
   const [bulkType, setBulkType] = useState("grid_weekdays"); // grid_weekdays / month_weekday
   const [bulkWeekday, setBulkWeekday] = useState("1"); // 0..6
+  const [bulkPanelOpen, setBulkPanelOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.innerWidth > 640;
+  });
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const weekdays = useMemo(() => cal?.weekdays || ["日","月","火","水","木","金","土"], [cal]);
   const gridStart = cal?.gridStart;
@@ -181,45 +187,88 @@ export default function AvailabilityPage(props) {
     });
   }
 
+  function buildBulkSummary() {
+    const actionLabel = bulkAction === "on" ? "一括ON" : "一括OFF";
+    if (bulkType === "grid_weekdays") {
+      return {
+        actionLabel,
+        targetLabel: "この4週間の平日（月〜金）",
+        weekdaysArr: [1, 2, 3, 4, 5],
+        mode: "grid",
+        start: gridStart,
+        end: gridEnd,
+      };
+    }
+
+    const weekday = parseInt(bulkWeekday, 10);
+    const weekdayLabel = weekdays[weekday] || "指定曜日";
+
+    return {
+      actionLabel,
+      targetLabel: `${cal?.monthLabel}の${weekdayLabel}曜日`,
+      weekdaysArr: [weekday],
+      mode: "month",
+      start: monthStart,
+      end: monthEnd,
+    };
+  }
+
+  function openBulkConfirm() {
+    setBulkConfirmOpen(true);
+  }
+
+  function closeBulkConfirm() {
+    if (bulkSubmitting) return;
+    setBulkConfirmOpen(false);
+  }
+
+  async function executeBulkApply() {
+    const summary = buildBulkSummary();
+    const action = bulkAction;
+
+    try {
+      setBulkSubmitting(true);
+      showToast("まとめて保存中...");
+
+      const data = await apiPost(routes.bulk, {
+        mode: summary.mode,
+        start: summary.start,
+        end: summary.end,
+        weekdays: summary.weekdaysArr,
+        action,
+      });
+
+      applyBulkLocal({
+        start: summary.start,
+        end: summary.end,
+        weekdaysArr: summary.weekdaysArr,
+        action,
+      });
+
+      setBulkConfirmOpen(false);
+      showToast(`${summary.targetLabel}を${action === "on" ? "一括ON" : "一括OFF"}しました（${data.count}件）`);
+    } catch (e) {
+      showToast(e.message || "エラー");
+    } finally {
+      setBulkSubmitting(false);
+    }
+  }
+
   async function bulkApply() {
     const action = bulkAction;
     const typeVal = bulkType;
 
     try {
-      showToast("まとめて保存中...");
-
-      if (typeVal === "grid_weekdays") {
-        const weekdaysArr = [1, 2, 3, 4, 5];
-        const data = await apiPost(routes.bulk, {
-          mode: "grid",
-          start: gridStart,
-          end: gridEnd,
-          weekdays: weekdaysArr,
-          action,
-        });
-
-        applyBulkLocal({ start: gridStart, end: gridEnd, weekdaysArr, action });
-        showToast(`平日を一括${action === "on" ? "ON" : "OFF"}しました（${data.count}件）`);
-        return;
+      if (typeVal === "grid_weekdays" || typeVal === "month_weekday") {
+        openBulkConfirm();
       }
-
-      const weekday = parseInt(bulkWeekday, 10);
-      const data = await apiPost(routes.bulk, {
-        mode: "month",
-        start: monthStart,
-        end: monthEnd,
-        weekdays: [weekday],
-        action,
-      });
-
-      applyBulkLocal({ start: gridStart, end: gridEnd, weekdaysArr: [weekday], action });
-      showToast(`曜日を一括${action === "on" ? "ON" : "OFF"}しました（${data.count}件）`);
     } catch (e) {
       showToast(e.message || "エラー");
     }
   }
 
   const isMonth = bulkType === "month_weekday";
+  const bulkSummary = buildBulkSummary();
 
   const days = useMemo(() => {
     const arr = [];
@@ -346,53 +395,73 @@ export default function AvailabilityPage(props) {
           </div>
         </div>
 
-        <div className="bulkPanel">
-          <div className="bulkPanelTitle">🧩 一括操作</div>
-          <div className="bulkPanelDesc">未来（今日以降）のみ対象。過去は変更しません。</div>
-
-          <div className="bulkFormRow">
+        <div className={`bulkPanel ${bulkPanelOpen ? "isOpen" : ""}`}>
+          <button
+            type="button"
+            className="bulkPanelToggle"
+            aria-expanded={bulkPanelOpen ? "true" : "false"}
+            onClick={() => setBulkPanelOpen((prev) => !prev)}
+          >
             <div>
-              <label className="bulkSelectLabel" htmlFor="bulkAction">操作</label>
-              <select id="bulkAction" className="bulkSelect" value={bulkAction} onChange={(e) => setBulkAction(e.target.value)}>
-                <option value="on">一括ON</option>
-                <option value="off">一括OFF</option>
-              </select>
+              <div className="bulkPanelTitle">🧩 一括操作</div>
+              <div className="bulkPanelDesc">誤操作防止のため、使うときだけ開いて更新してください。</div>
             </div>
+            <span className="bulkPanelToggleIcon">{bulkPanelOpen ? "閉じる" : "開く"}</span>
+          </button>
 
-            <div>
-              <label className="bulkSelectLabel" htmlFor="bulkType">対象</label>
-              <select id="bulkType" className="bulkSelect" value={bulkType} onChange={(e) => setBulkType(e.target.value)}>
-                <option value="grid_weekdays">この4週間：平日（月〜金）</option>
-                <option value="month_weekday">{cal?.monthLabel}：曜日を選んで全て</option>
-              </select>
-            </div>
+          {bulkPanelOpen && (
+            <>
+              <div className={`bulkSummary ${bulkAction === "off" ? "off" : ""}`}>
+                <div className="bulkSummaryLabel">現在の一括設定</div>
+                <div className="bulkSummaryValue">{bulkSummary.actionLabel}</div>
+                <div className="bulkSummaryTarget">{bulkSummary.targetLabel}</div>
+              </div>
 
-            <div>
-              <label className="bulkSelectLabel" htmlFor="bulkWeekday">曜日</label>
-              <select
-                id="bulkWeekday"
-                className="bulkSelect"
-                value={bulkWeekday}
-                disabled={!isMonth}
-                onChange={(e) => setBulkWeekday(e.target.value)}
-              >
-                <option value="1">月曜</option>
-                <option value="2">火曜</option>
-                <option value="3">水曜</option>
-                <option value="4">木曜</option>
-                <option value="5">金曜</option>
-                <option value="6">土曜</option>
-                <option value="0">日曜</option>
-              </select>
-            </div>
+              <div className="bulkFormRow">
+                <div>
+                  <label className="bulkSelectLabel" htmlFor="bulkAction">操作</label>
+                  <select id="bulkAction" className="bulkSelect" value={bulkAction} onChange={(e) => setBulkAction(e.target.value)}>
+                    <option value="on">一括ON</option>
+                    <option value="off">一括OFF</option>
+                  </select>
+                </div>
 
-            <div id="bulkApplyWrap">
-              <label className="bulkSelectLabel" style={{ opacity: 0 }}>更新</label>
-              <button type="button" className={`bulkApplyBtn ${bulkAction === "off" ? "off" : ""}`} onClick={bulkApply}>
-                更新
-              </button>
-            </div>
-          </div>
+                <div>
+                  <label className="bulkSelectLabel" htmlFor="bulkType">対象</label>
+                  <select id="bulkType" className="bulkSelect" value={bulkType} onChange={(e) => setBulkType(e.target.value)}>
+                    <option value="grid_weekdays">この4週間：平日（月〜金）</option>
+                    <option value="month_weekday">{cal?.monthLabel}：曜日を選んで全て</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="bulkSelectLabel" htmlFor="bulkWeekday">曜日</label>
+                  <select
+                    id="bulkWeekday"
+                    className="bulkSelect"
+                    value={bulkWeekday}
+                    disabled={!isMonth}
+                    onChange={(e) => setBulkWeekday(e.target.value)}
+                  >
+                    <option value="1">月曜</option>
+                    <option value="2">火曜</option>
+                    <option value="3">水曜</option>
+                    <option value="4">木曜</option>
+                    <option value="5">金曜</option>
+                    <option value="6">土曜</option>
+                    <option value="0">日曜</option>
+                  </select>
+                </div>
+
+                <div id="bulkApplyWrap">
+                  <label className="bulkSelectLabel" style={{ opacity: 0 }}>更新</label>
+                  <button type="button" className={`bulkApplyBtn ${bulkAction === "off" ? "off" : ""}`} onClick={bulkApply}>
+                    一括更新を確認
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -457,6 +526,43 @@ export default function AvailabilityPage(props) {
                 disabled={!canSubmitCancel || cancelSubmitting}
               >
                 {cancelSubmitting ? "送信中..." : "解除する"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl">
+            <h2 className="text-base font-bold text-slate-900">一括更新を実行しますか？</h2>
+            <p className="mt-1 text-xs text-slate-600">
+              個別に選んだ日とは別に、下の条件でまとめて更新します。
+            </p>
+
+            <div className={`mt-3 rounded-2xl border px-4 py-3 ${bulkAction === "off" ? "border-rose-200 bg-rose-50" : "border-sky-200 bg-sky-50"}`}>
+              <div className="text-xs font-semibold text-slate-500">操作内容</div>
+              <div className="mt-1 text-sm font-bold text-slate-900">{bulkSummary.actionLabel}</div>
+              <div className="mt-2 text-xs font-semibold text-slate-500">対象範囲</div>
+              <div className="mt-1 text-sm font-semibold text-slate-800">{bulkSummary.targetLabel}</div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+                onClick={closeBulkConfirm}
+                disabled={bulkSubmitting}
+              >
+                やめる
+              </button>
+              <button
+                type="button"
+                className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${bulkAction === "off" ? "bg-rose-600" : "bg-sky-600"}`}
+                onClick={executeBulkApply}
+                disabled={bulkSubmitting}
+              >
+                {bulkSubmitting ? "更新中..." : "この内容で更新"}
               </button>
             </div>
           </div>
@@ -599,6 +705,18 @@ const css = `
   padding:10px;
   box-shadow:0 2px 10px rgba(15,23,42,.06);
 }
+.bulkPanelToggle {
+  width:100%;
+  border:0;
+  background:transparent;
+  padding:0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  text-align:left;
+  cursor:pointer;
+}
 .bulkPanelTitle {
   font-weight:900;
   font-size:12px;
@@ -612,6 +730,43 @@ const css = `
   color:#64748b;
   font-weight:700;
   margin-top:4px;
+}
+.bulkPanelToggleIcon {
+  flex:none;
+  border-radius:999px;
+  padding:8px 12px;
+  background:#eef2ff;
+  color:#4338ca;
+  font-size:11px;
+  font-weight:900;
+}
+.bulkSummary {
+  margin-top:10px;
+  border-radius:14px;
+  border:1px solid rgba(14,165,233,.22);
+  background:rgba(240,249,255,.95);
+  padding:10px 12px;
+}
+.bulkSummary.off {
+  border-color:rgba(239,68,68,.20);
+  background:rgba(254,242,242,.96);
+}
+.bulkSummaryLabel {
+  font-size:10px;
+  font-weight:800;
+  color:#64748b;
+}
+.bulkSummaryValue {
+  margin-top:4px;
+  font-size:13px;
+  font-weight:900;
+  color:#0f172a;
+}
+.bulkSummaryTarget {
+  margin-top:4px;
+  font-size:12px;
+  font-weight:700;
+  color:#334155;
 }
 .bulkFormRow {
   display:grid;
@@ -689,7 +844,19 @@ const css = `
   .dayCell:hover { transform:none; box-shadow:0 4px 10px rgba(15,23,42,.10); }
 
   /* スマホは縦積み（カレンダーを主役に） */
-  .bulkPanel { padding:12px; }
+  .bulkPanel {
+    padding:12px;
+    margin-top:14px;
+    background:rgba(248,250,252,.98);
+  }
+  .bulkPanelToggleIcon {
+    padding:7px 10px;
+    font-size:10px;
+  }
+  .bulkSummary {
+    margin-top:12px;
+    padding:12px;
+  }
   .bulkFormRow { grid-template-columns: 1fr; gap:10px; }
   .bulkSelect { padding:12px; font-size:13px; border-radius:14px; }
   .bulkApplyBtn { padding:12px 14px; font-size:13px; border-radius:14px; }

@@ -70,6 +70,9 @@
                 <div class="text-xs text-gray-500">
                     既定CSV保存先: <code>{{ $defaultCsvPath }}</code>
                 </div>
+                <div class="text-xs text-gray-500">
+                    2026年の国税庁公式 <code>01-07.xls</code> はURL指定・ファイル指定のどちらでもそのまま取り込めます。
+                </div>
             </div>
 
             <div class="bg-white shadow-sm sm:rounded-lg p-4">
@@ -115,6 +118,7 @@
                             <label class="block text-xs font-semibold text-gray-600 mb-1">ファイル（csv / xlsx / xls）</label>
                             <input type="file" name="tax_file" accept=".csv,.xlsx,.xls"
                                    class="w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                            <p class="mt-1 text-xs text-gray-500">2026年の国税庁公式 <code>01-07.xls</code> に対応しています。</p>
                         </div>
                         <button type="submit"
                                 class="inline-flex items-center justify-center px-4 h-10 rounded-md bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
@@ -138,6 +142,7 @@
                             <input type="url" name="source_url" value="{{ old('source_url', '') }}"
                                    placeholder="https://.../zeigakuhyo2026.xlsx"
                                    class="w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                            <p class="mt-1 text-xs text-gray-500">例: <code>https://www.nta.go.jp/publication/pamph/gensen/zeigakuhyo2026/data/01-07.xls</code></p>
                         </div>
                         <button type="submit"
                                 class="inline-flex items-center justify-center px-4 h-10 rounded-md bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700">
@@ -288,4 +293,3 @@
         </div>
     </div>
 </x-app-layout>
-
